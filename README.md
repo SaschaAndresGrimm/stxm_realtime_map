@@ -103,6 +103,10 @@ Output: CSV with header `image_index, x, y, timestamp, value`
 - **worker.py** - Parallel worker processes, connects to ZMQ endpoint
 - **processing.py** - Frame processing logic (customize here)
 - **logging_setup.py** - Logging configuration
+- **plotter.py** - Real-time plotting utilities
+- **simulation.py** - Debug-mode simulated data generator
+- **data_collection.py** - Data aggregation and plot update helpers
+- **io_utils.py** - Output and debug prompt helpers
 
 ## Performance Notes
 
