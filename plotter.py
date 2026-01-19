@@ -8,6 +8,7 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 MIN_PLOT_FREQUENCY = 0.01  # Hz
+LABEL_MIN_PIXEL_SIZE = 40  # Minimum on-screen pixel size to show values.
 
 
 class RealtimeSTXMPlotter:
@@ -38,6 +39,7 @@ class RealtimeSTXMPlotter:
         self.logger = logger
         self.update_every_n_frames = max(0, int(update_every_n_frames))
         self.frame_count = 0
+        self.label_min_pixel_size = LABEL_MIN_PIXEL_SIZE
 
         # Enable interactive mode for better display handling
         plt.ion()
@@ -62,6 +64,8 @@ class RealtimeSTXMPlotter:
 
         self.fig.suptitle('Real-time STXM Map')
         self.images = {}
+        self.axis_thresholds = {}
+        self.label_artists = {}
 
         self._rebuild_layout()
         self.fig.show()
@@ -79,6 +83,8 @@ class RealtimeSTXMPlotter:
             self.axes = [self.axes]
         self.fig.suptitle('Real-time STXM Map')
         self.images = {}
+        self.axis_thresholds = {}
+        self.label_artists = {threshold: [] for threshold in self.thresholds}
         for ax, thr in zip(self.axes, self.thresholds):
             im = ax.imshow(
                 self.maps[thr],
@@ -90,7 +96,10 @@ class RealtimeSTXMPlotter:
             ax.set_ylabel('Y (pixels)')
             ax.set_title(f'Threshold {thr}')
             self.images[thr] = im
+            self.axis_thresholds[ax] = thr
             plt.colorbar(im, ax=ax, label='Count')
+            ax.callbacks.connect('xlim_changed', self._on_view_change)
+            ax.callbacks.connect('ylim_changed', self._on_view_change)
         plt.tight_layout()
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
@@ -119,8 +128,56 @@ class RealtimeSTXMPlotter:
             vmax = np.nanmax(self.maps[threshold])
             self.images[threshold].set_data(self.maps[threshold])
             self.images[threshold].set_clim(vmin, vmax)
+        renderer = self.fig.canvas.get_renderer()
+        for ax, threshold in self.axis_thresholds.items():
+            self._update_labels_for_axis(ax, threshold, renderer)
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
+
+    def _clear_labels(self, threshold: str) -> None:
+        for artist in self.label_artists.get(threshold, []):
+            artist.remove()
+        self.label_artists[threshold] = []
+
+    def _update_labels_for_axis(self, ax, threshold: str, renderer) -> None:
+        x0, x1 = ax.get_xlim()
+        y0, y1 = ax.get_ylim()
+        xspan = max(abs(x1 - x0), 1e-6)
+        yspan = max(abs(y1 - y0), 1e-6)
+        bbox = ax.get_window_extent(renderer=renderer)
+        pixel_size = min(bbox.width / xspan, bbox.height / yspan)
+
+        if pixel_size < self.label_min_pixel_size:
+            self._clear_labels(threshold)
+            return
+
+        x_start = max(int(np.floor(min(x0, x1))), 0)
+        x_end = min(int(np.ceil(max(x0, x1))), self.grid_x)
+        y_start = max(int(np.floor(min(y0, y1))), 0)
+        y_end = min(int(np.ceil(max(y0, y1))), self.grid_y)
+
+        self._clear_labels(threshold)
+        for y in range(y_start, y_end):
+            for x in range(x_start, x_end):
+                value = int(self.maps[threshold][y, x])
+                text = ax.text(
+                    x + 0.5,
+                    y + 0.5,
+                    f"{value}",
+                    ha='center',
+                    va='center',
+                    fontsize=8,
+                    color='white',
+                )
+                self.label_artists[threshold].append(text)
+
+    def _on_view_change(self, ax) -> None:
+        threshold = self.axis_thresholds.get(ax)
+        if not threshold:
+            return
+        renderer = self.fig.canvas.get_renderer()
+        self._update_labels_for_axis(ax, threshold, renderer)
+        self.fig.canvas.draw_idle()
 
     def update(self, threshold: str, image_id: Optional[int], value: int) -> bool:
         """Update a specific position in the map for a given threshold."""
