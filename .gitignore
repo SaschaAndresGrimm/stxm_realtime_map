@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+*.log
+*.tmp
+*.swp
+*~
+*.bak
+.vscode/
+.idea/
+stxm_map_debug.log
+*_start_data.txt
+*_end_data.txt
+*_output_*_data.txt
