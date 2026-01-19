@@ -1,0 +1,36 @@
+# STXM Map (Go + Web UI)
+
+Minimal Go prototype with a web UI (embedded assets) streaming simulated frames.
+
+## Run (requires Go)
+
+```bash
+go run ./cmd/stxm-map --port 8888 --grid-x 52 --grid-y 52 --debug --debug-acq-rate 100 --output-dir output
+```
+
+Open `http://localhost:8888` in your browser.
+
+## Notes
+
+- Currently uses the simulator only. ZMQ/CBOR ingest is the next step.
+- `--endpoint` is used for ZMQ ingest in non-debug mode.
+- `--ingest-log-every` controls ingest error log frequency (default: 100).
+- `--ingest-fallback` toggles simulator fallback on ingest failure.
+- Web assets are embedded via `//go:embed`.
+
+## Example (ingest mode)
+
+```bash
+go run ./cmd/stxm-map --port 8888 --endpoint tcp://localhost:31001 --ingest-log-every 500 --ingest-fallback=false
+```
+
+## Output Files
+
+Files are written to the output directory once a full scan completes:
+
+- `{timestamp}_output_{threshold}_data.txt` with columns `image_index, x, y, timestamp, value`
+
+## Endpoints
+
+- `GET /healthz` returns `ok`
+- `GET /config` returns JSON configuration for grid/thresholds
