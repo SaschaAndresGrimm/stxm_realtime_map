@@ -4,6 +4,10 @@ import logging
 import numpy as np
 import pprint
 
+from data_collection import CollectedData
+
+logger = logging.getLogger(__name__)
+
 
 def save_start_or_end_data(data: Dict[str, Any], filename: str) -> None:
     """Save the start or end metadata to disk."""
@@ -12,7 +16,7 @@ def save_start_or_end_data(data: Dict[str, Any], filename: str) -> None:
 
 
 def save_collected_data(
-    collected_data: Dict[str, Dict[str, np.ndarray]],
+    collected_data: CollectedData,
     run_timestamp: str,
     grid_x: int,
     grid_y: int,

@@ -1,8 +1,11 @@
 import time
 from typing import Any, Dict, Iterator, Optional
 
+import logging
+
 import numpy as np
 
+logger = logging.getLogger(__name__)
 
 def simulate_detector_data(
     grid_x: int,

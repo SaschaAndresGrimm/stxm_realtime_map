@@ -1,17 +1,20 @@
 import logging
-from typing import Dict, Optional
+from typing import Dict, Optional, Set
 
 import numpy as np
 
 from plotter import RealtimeSTXMPlotter
 
+logger = logging.getLogger(__name__)
+
+CollectedData = Dict[str, Dict[str, np.ndarray]]
 
 def collect_data_point(
     threshold: str,
     image_id: Optional[int],
     timestamp: Optional[float],
     value: int,
-    collected_data: Dict[str, Dict[str, np.ndarray]],
+    collected_data: CollectedData,
     total_pixels: int,
     logger: logging.Logger,
 ) -> None:
@@ -35,7 +38,7 @@ def maybe_update_plot(
     threshold: str,
     image_id: Optional[int],
     value: int,
-    active_thresholds: set,
+    active_thresholds: Set[str],
     plotter: Optional[RealtimeSTXMPlotter],
     enable_plotting: bool,
     grid_x: int,

@@ -5,6 +5,8 @@ from typing import Optional
 import matplotlib.pyplot as plt
 import numpy as np
 
+logger = logging.getLogger(__name__)
+
 MIN_PLOT_FREQUENCY = 0.01  # Hz
 
 

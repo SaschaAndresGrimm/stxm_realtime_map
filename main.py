@@ -2,7 +2,8 @@
 import sys
 import time
 import logging
-from typing import Dict
+from dataclasses import dataclass
+from typing import Dict, Optional
 from multiprocessing import Process, Event, Queue
 from queue import Empty
 from worker import worker  # Import the worker function
@@ -11,11 +12,29 @@ from logging.handlers import QueueListener
 from logging_setup import setup_logging
 from datetime import datetime  # Import datetime for timestamp
 
-from data_collection import collect_data_point, maybe_update_plot
+from data_collection import CollectedData, collect_data_point, maybe_update_plot
 from io_utils import prompt_next_debug_scan, save_collected_data, save_start_or_end_data
 from simulation import simulate_detector_data
 
 DEBUG_SLEEP_INTERVAL = 0.001  # seconds
+
+
+@dataclass(frozen=True)
+class AppConfig:
+    endpoint: str
+    num_workers: int
+    grid_x: int
+    grid_y: int
+    enable_plotting: bool
+    plot_frequency: float
+    plot_refresh_every: int
+    debug_mode: bool
+    debug_acq_rate: float
+    debug_series_limit: Optional[int]
+    log_level: int
+    extra_debug: bool
+    log_summary_interval: int
+
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description='Start the main process with worker processes.')
@@ -45,6 +64,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
                         help='Run in debug mode with simulated data (no ZMQ connection needed)')
     parser.add_argument('--debug-acq-rate', type=float, default=100.0,
                         help='Simulated acquisition rate in frames per second (default: 10.0)')
+    parser.add_argument('--debug-series-limit', type=int, default=0,
+                        help='Stop after N debug series (default: 0 for unlimited)')
     return parser
 
 
@@ -55,6 +76,23 @@ def main() -> None:
     # Set the logging level based on the verbosity flags
     # `--extra-debug` implies debug as well
     log_level = logging.DEBUG if (args.verbose or args.extra_debug) else logging.INFO
+    debug_series_limit = args.debug_series_limit if args.debug_series_limit > 0 else None
+
+    config = AppConfig(
+        endpoint=f"tcp://{args.hostname}:{args.port}",
+        num_workers=args.num_workers,
+        grid_x=args.grid_x,
+        grid_y=args.grid_y,
+        enable_plotting=args.plot,
+        plot_frequency=args.plot_frequency,
+        plot_refresh_every=args.plot_refresh_every,
+        debug_mode=args.debug,
+        debug_acq_rate=args.debug_acq_rate,
+        debug_series_limit=debug_series_limit,
+        log_level=log_level,
+        extra_debug=args.extra_debug,
+        log_summary_interval=args.log_summary_interval,
+    )
 
     # Set up logging in the main process
     log_queue = Queue()
@@ -65,34 +103,24 @@ def main() -> None:
     listener = QueueListener(log_queue, *logging.getLogger().handlers)
     listener.start()
 
-    endpoint = f"tcp://{args.hostname}:{args.port}"
-    num_workers = args.num_workers  # Number of worker processes
-    grid_x = args.grid_x
-    grid_y = args.grid_y
-    enable_plotting = args.plot
-    plot_frequency = args.plot_frequency
-    plot_refresh_every = args.plot_refresh_every
-    debug_mode = args.debug
-    debug_acq_rate = args.debug_acq_rate
-
     workers = []
     stop_event = Event()  # Create an Event to signal workers to stop
     results_queue = Queue()  # Queue for collecting results from workers
     plotter = None  # Will be initialized when we know the thresholds
 
     # In debug mode, don't start workers - generate simulated data instead
-    if not debug_mode:
-        for _ in range(num_workers):
+    if not config.debug_mode:
+        for _ in range(config.num_workers):
             p = Process(
                 target=worker,
                 args=(
-                    endpoint,
+                    config.endpoint,
                     stop_event,
                     log_queue,
                     results_queue,
-                    log_level,
-                    args.extra_debug,
-                    args.log_summary_interval,
+                    config.log_level,
+                    config.extra_debug,
+                    config.log_summary_interval,
                 ),
             )
             p.start()
@@ -102,25 +130,26 @@ def main() -> None:
         logger.info("Running in DEBUG mode with simulated data")
 
     try:
-        logger.info(f"Main process is running with {num_workers} workers. Press Ctrl+C to stop.")
+        logger.info(f"Main process is running with {config.num_workers} workers. Press Ctrl+C to stop.")
 
+        series_count = 0
         while True:  # Main loop to process multiple series
-            collected_data: Dict[str, Dict[str, np.ndarray]] = {}
+            collected_data: CollectedData = {}
             start_data_saved = False
             end_data_saved = False
             run_timestamp = None
             total_frame_count = 0
             active_thresholds = set()
-            total_pixels = grid_x * grid_y
+            total_pixels = config.grid_x * config.grid_y
             series_processing = True
 
             debug_data_generator = None
-            if debug_mode:
+            if config.debug_mode:
                 debug_data_generator = simulate_detector_data(
-                    grid_x,
-                    grid_y,
-                    num_frames=grid_x * grid_y,
-                    acquisition_rate=debug_acq_rate,
+                    config.grid_x,
+                    config.grid_y,
+                    num_frames=config.grid_x * config.grid_y,
+                    acquisition_rate=config.debug_acq_rate,
                 )
 
             # Start a fresh figure for each series; keep prior scans open
@@ -128,7 +157,7 @@ def main() -> None:
 
             while series_processing and not stop_event.is_set():
                 try:
-                    if debug_mode and debug_data_generator is not None:
+                    if config.debug_mode and debug_data_generator is not None:
                         try:
                             result = next(debug_data_generator)
                         except StopIteration:
@@ -162,7 +191,7 @@ def main() -> None:
                         else:
                             logger.debug("End data already saved. Ignoring duplicate.")
                         series_processing = False
-                    elif result_type == 'image' and debug_mode:
+                    elif result_type == 'image' and config.debug_mode:
                         image_id = result.get('image_id')
                         timestamp = result.get('start_time')
                         for threshold, value in result['data'].items():
@@ -181,12 +210,12 @@ def main() -> None:
                                 value,
                                 active_thresholds,
                                 plotter,
-                                enable_plotting,
-                                grid_x,
-                                grid_y,
+                                config.enable_plotting,
+                                config.grid_x,
+                                config.grid_y,
                                 logger,
-                                plot_frequency,
-                                plot_refresh_every,
+                                config.plot_frequency,
+                                config.plot_refresh_every,
                             )
                         total_frame_count += 1
                     elif result_type == 'data':
@@ -209,12 +238,12 @@ def main() -> None:
                             value,
                             active_thresholds,
                             plotter,
-                            enable_plotting,
-                            grid_x,
-                            grid_y,
+                            config.enable_plotting,
+                            config.grid_x,
+                            config.grid_y,
                             logger,
-                            plot_frequency,
-                            plot_refresh_every,
+                            config.plot_frequency,
+                            config.plot_refresh_every,
                         )
                     elif result_type == 'frame_count':
                         total_frame_count += result['count']
@@ -228,7 +257,7 @@ def main() -> None:
                 except Exception as e:
                     logger.error(f"Error collecting result: {e}", exc_info=True)
 
-                if debug_mode:
+                if config.debug_mode:
                     time.sleep(DEBUG_SLEEP_INTERVAL)
 
             logger.info("Writing collected data to text files...")
@@ -237,11 +266,17 @@ def main() -> None:
 
             if not run_timestamp:
                 run_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            save_collected_data(collected_data, run_timestamp, grid_x, grid_y, logger)
+            save_collected_data(collected_data, run_timestamp, config.grid_x, config.grid_y, logger)
 
             logger.info(f"Total frames received and processed by all workers: {total_frame_count}")
             logger.info("Series processing completed. Waiting for the next series to start.")
-            if debug_mode:
+            series_count += 1
+            if config.debug_mode and config.debug_series_limit is not None:
+                if series_count >= config.debug_series_limit:
+                    logger.info("Debug series limit reached; stopping.")
+                    break
+
+            if config.debug_mode:
                 prompt_next_debug_scan(logger)
 
     except KeyboardInterrupt:
@@ -251,7 +286,7 @@ def main() -> None:
     if plotter is not None:
         plotter.close()
 
-    if not debug_mode:
+    if not config.debug_mode:
         for p in workers:
             p.join()
             logger.info(f"{p.name} has terminated.")

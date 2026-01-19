@@ -33,6 +33,7 @@ python main.py --debug --plot --grid-x 256 --grid-y 256 --debug-acq-rate 100
 | `--plot-refresh-every` | 0 | Refresh plot every N frames (0 uses time-based refresh) |
 | `--debug` | - | Run with simulated data (no ZMQ needed) |
 | `--debug-acq-rate` | 100.0 | Simulated acquisition rate (frames/sec) |
+| `--debug-series-limit` | 0 | Stop after N debug series (0 = unlimited) |
 | `-v, --verbose` | - | Enable debug logging |
 
 ## Usage Examples
@@ -107,6 +108,13 @@ Output: CSV with header `image_index, x, y, timestamp, value`
 - **simulation.py** - Debug-mode simulated data generator
 - **data_collection.py** - Data aggregation and plot update helpers
 - **io_utils.py** - Output and debug prompt helpers
+
+## Tests
+
+Run the minimal smoke test:
+```bash
+python -m unittest tests/test_debug_smoke.py
+```
 
 ## Performance Notes
 
