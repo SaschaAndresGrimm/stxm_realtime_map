@@ -74,7 +74,7 @@ class RealtimeSTXMPlotter:
         self.fig.clf()
         num_plots = len(self.thresholds)
         self.fig.set_size_inches(5 * num_plots, 5, forward=True)
-        self.axes = self.fig.subplots(1, num_plots)
+        self.axes = self.fig.subplots(1, num_plots, sharex=True, sharey=True)
         if num_plots == 1:
             self.axes = [self.axes]
         self.fig.suptitle('Real-time STXM Map')
