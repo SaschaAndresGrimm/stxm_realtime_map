@@ -41,6 +41,8 @@ func ProcessFrame(payload any) (uint32, bool) {
 		return countBelowMaxUint64(v), true
 	case []uint8:
 		return countBelowMaxUint8(v), true
+	case []float32:
+		return countBelowMaxFloat32(v), true
 	case []int:
 		return countBelowMaxInt(v, int(math.MaxInt)), true
 	case []int64:
@@ -53,6 +55,8 @@ func ProcessFrame(payload any) (uint32, bool) {
 		return countBelowMaxUint64(flattenUint64(v)), true
 	case [][]uint8:
 		return countBelowMaxUint8(flattenUint8(v)), true
+	case [][]float32:
+		return countBelowMaxFloat32(flattenFloat32(v)), true
 	case [][]int:
 		return countBelowMaxInt(flattenInt(v), int(math.MaxInt)), true
 	case [][]int64:
@@ -141,7 +145,7 @@ func countBelowMaxAny(values []any) (uint32, bool) {
 
 	var count uint32
 	switch values[0].(type) {
-	case uint64, uint32, uint16, uint8, int64, int, float64:
+	case uint64, uint32, uint16, uint8, int64, int, float64, float32:
 		for _, v := range values {
 			switch n := v.(type) {
 			case uint64:
@@ -172,12 +176,26 @@ func countBelowMaxAny(values []any) (uint32, bool) {
 				if n < math.MaxFloat64 {
 					count++
 				}
+			case float32:
+				if n < math.MaxFloat32 {
+					count++
+				}
 			}
 		}
 		return count, true
 	default:
 		return 0, false
 	}
+}
+
+func countBelowMaxFloat32(values []float32) uint32 {
+	var count uint32
+	for _, v := range values {
+		if v < math.MaxFloat32 {
+			count++
+		}
+	}
+	return count
 }
 
 func flattenUint16(values [][]uint16) []uint16 {
@@ -222,6 +240,14 @@ func flattenInt(values [][]int) []int {
 
 func flattenInt64(values [][]int64) []int64 {
 	flat := make([]int64, 0)
+	for _, row := range values {
+		flat = append(flat, row...)
+	}
+	return flat
+}
+
+func flattenFloat32(values [][]float32) []float32 {
+	flat := make([]float32, 0)
 	for _, row := range values {
 		flat = append(flat, row...)
 	}

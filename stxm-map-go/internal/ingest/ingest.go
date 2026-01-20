@@ -85,7 +85,13 @@ func decodeMessage(msg []byte, logEvery int) (types.RawMessage, bool) {
 	}
 
 	if msgType != "image" {
-		meta, _ := payload["data"].(map[string]any)
+		meta := make(map[string]any, len(payload))
+		for key, value := range payload {
+			if key == "type" {
+				continue
+			}
+			meta[key] = value
+		}
 		return types.RawMessage{
 			Type: msgType,
 			Meta: meta,
@@ -95,6 +101,20 @@ func decodeMessage(msg []byte, logEvery int) (types.RawMessage, bool) {
 	dataRaw, ok := payload["data"].(map[string]any)
 	if !ok {
 		logEveryN(logEvery, "ingest invalid data field")
+		return types.RawMessage{}, false
+	}
+
+	decoded := make(map[string]any, len(dataRaw))
+	for key, value := range dataRaw {
+		array, err := decodeMultiDimArray(value)
+		if err != nil {
+			logEveryN(logEvery, "ingest failed to decode %s: %v", key, err)
+			continue
+		}
+		decoded[key] = array
+	}
+	if len(decoded) == 0 {
+		logEveryN(logEvery, "ingest image had no decoded channels")
 		return types.RawMessage{}, false
 	}
 
@@ -114,7 +134,7 @@ func decodeMessage(msg []byte, logEvery int) (types.RawMessage, bool) {
 		Image: types.RawFrame{
 			ImageID:   imageID,
 			StartTime: startTime,
-			Data:      dataRaw,
+			Data:      decoded,
 		},
 	}, true
 }
