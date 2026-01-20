@@ -489,18 +489,36 @@ function setStatus(el, value) {
 }
 
 function statusClass(value) {
+  if (!value) {
+    return "status-warn";
+  }
+  if (typeof value === "string" && value.startsWith("http_")) {
+    return "status-error";
+  }
   switch (value) {
     case "ok":
     case "connected":
     case "receiving":
+    case "ready":
+    case "running":
+    case "active":
+    case "acquiring":
+    case "streaming":
       return "status-ok";
     case "idle":
+    case "standby":
+    case "na":
       return "status-idle";
     case "writing":
     case "simulator":
       return "status-info";
     case "error":
+    case "fault":
+    case "offline":
       return "status-error";
+    case "warning":
+    case "warn":
+      return "status-warn";
     default:
       return "status-warn";
   }

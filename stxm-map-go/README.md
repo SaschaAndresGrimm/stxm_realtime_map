@@ -14,7 +14,11 @@ Open `http://localhost:8888` in your browser.
 ## Notes
 
 - Currently uses the simulator only. ZMQ/CBOR ingest is the next step.
-- `--endpoint` is used for ZMQ ingest in non-debug mode.
+- `--detector-ip` sets the detector IP for both ZMQ ingest and SIMPLON status polling.
+- `--api-port` sets the SIMPLON API port (default: 80).
+- `--zmq-port` sets the ZMQ port (default: 31001).
+- `--endpoint` is used for ZMQ ingest when `--detector-ip` is not set.
+- `--simplon-interval` sets the polling interval for detector status (default: 1s).
 - `--ingest-log-every` controls ingest error log frequency (default: 100).
 - `--ingest-fallback` toggles simulator fallback on ingest failure.
 - `--workers` sets the number of processing workers.
