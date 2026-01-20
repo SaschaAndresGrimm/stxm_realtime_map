@@ -134,6 +134,12 @@ body.panel-opened {
   position: relative;
 }
 
+.plot-body {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
 .plot h2 {
   font-size: 14px;
   margin: 0 0 8px 0;
@@ -144,6 +150,7 @@ body.panel-opened {
   overflow: auto;
   border: 1px solid #eee;
   background: #111;
+  flex: 1;
 }
 
 .canvas-inner {
@@ -153,6 +160,32 @@ body.panel-opened {
 canvas {
   image-rendering: pixelated;
   display: block;
+}
+
+.projection {
+  background: transparent;
+  border: 1px solid #ddd;
+}
+
+.projection-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.projection-x {
+  flex: 1;
+  height: 60px;
+  margin-top: 8px;
+}
+
+.projection-y {
+  width: 60px;
+  height: 100%;
+}
+
+.projection-spacer {
+  width: 60px;
 }
 
 .colorbar {

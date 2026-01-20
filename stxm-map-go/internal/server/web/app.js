@@ -72,6 +72,23 @@ function createPlot(threshold) {
   const values = new Uint32Array(gridX * gridY);
   const basePixel = { value: 12 };
   const zoom = { value: 1 };
+  const xSums = new Float64Array(gridX);
+  const ySums = new Float64Array(gridY);
+  const rowCounts = new Uint32Array(gridY);
+  const projectionDirty = { value: false };
+
+  const plotBody = document.createElement("div");
+  plotBody.className = "plot-body";
+  const yProjection = document.createElement("canvas");
+  yProjection.className = "projection projection-y";
+  const yProjectionCtx = yProjection.getContext("2d");
+  const xProjection = document.createElement("canvas");
+  xProjection.className = "projection projection-x";
+  const xProjectionCtx = xProjection.getContext("2d");
+  const projectionRow = document.createElement("div");
+  projectionRow.className = "projection-row";
+  const projectionSpacer = document.createElement("div");
+  projectionSpacer.className = "projection-spacer";
 
   controls.appendChild(title);
   controls.appendChild(exportBtn);
@@ -81,7 +98,12 @@ function createPlot(threshold) {
   canvasInner.appendChild(pixelLabels);
   canvasWrap.appendChild(canvasInner);
   canvasWrap.appendChild(tooltip);
-  container.appendChild(canvasWrap);
+  plotBody.appendChild(canvasWrap);
+  plotBody.appendChild(yProjection);
+  container.appendChild(plotBody);
+  projectionRow.appendChild(xProjection);
+  projectionRow.appendChild(projectionSpacer);
+  container.appendChild(projectionRow);
 
   const colorbar = document.createElement("div");
   colorbar.className = "colorbar";
@@ -187,6 +209,14 @@ function createPlot(threshold) {
     minLabel,
     maxLabel,
     values,
+    xSums,
+    ySums,
+    rowCounts,
+    projectionDirty,
+    xProjection,
+    xProjectionCtx,
+    yProjection,
+    yProjectionCtx,
     basePixel,
     zoom,
     canvasWrap,
@@ -215,7 +245,9 @@ function updatePixel(threshold, imageId, value) {
   const plot = plots.get(threshold);
   if (!plot) return;
 
+  const prev = plot.values[imageId];
   plot.values[imageId] = value;
+  const delta = value - prev;
   if (plot.maxValue.value === 1 && plot.minValue.value === 0) {
     plot.minValue.value = value;
     plot.maxValue.value = value;
@@ -236,6 +268,11 @@ function updatePixel(threshold, imageId, value) {
   const x = imageId % gridX;
   const y = Math.floor(imageId / gridX);
   const idx = (y * gridX + x) * 4;
+  plot.xSums[x] += delta;
+  plot.ySums[y] += delta;
+  if (prev === 0) {
+    plot.rowCounts[y] += 1;
+  }
   let minVal = plot.minValue.value;
   let maxVal = plot.maxValue.value;
   if (!autoscaleToggle.checked) {
@@ -252,6 +289,7 @@ function updatePixel(threshold, imageId, value) {
   plot.imageData.data[idx + 2] = b;
   plot.imageData.data[idx + 3] = 255;
   plot.ctx.putImageData(plot.imageData, 0, 0);
+  scheduleProjectionUpdate(plot);
 }
 
 const ws = new WebSocket(`ws://${location.host}/ws`);
@@ -313,6 +351,7 @@ function updatePlotScale(plot) {
   plot.canvasInner.style.height = `${heightPx}px`;
   plot.gridOverlay.style.backgroundSize = `${pixelSize}px ${pixelSize}px`;
   updatePixelLabels(plot);
+  scheduleProjectionUpdate(plot);
 }
 
 function setGlobalZoom(value) {
@@ -401,6 +440,7 @@ window.addEventListener("mousemove", (event) => {
   controlPanel.style.width = `${nextWidth}px`;
   document.body.style.setProperty("--panel-width", `${nextWidth}px`);
   scheduleHistogramUpdate();
+  plots.forEach((plot) => scheduleProjectionUpdate(plot));
 });
 
 window.addEventListener("mouseup", () => {
@@ -409,6 +449,7 @@ window.addEventListener("mouseup", () => {
 
 window.addEventListener("resize", () => {
   scheduleHistogramUpdate();
+  plots.forEach((plot) => scheduleProjectionUpdate(plot));
 });
 
 function updatePanelPadding() {
@@ -469,6 +510,7 @@ function redrawPlot(plot) {
   }
   updatePixelLabels(plot);
   scheduleHistogramUpdate();
+  scheduleProjectionUpdate(plot);
 }
 
 function updateContrastControls() {
@@ -533,6 +575,210 @@ function renderHistogram() {
     histogramCtx.fillStyle = `rgb(${r}, ${g}, ${b})`;
     histogramCtx.fillRect(i * barWidth, height - h, Math.max(1, barWidth - 1), h);
   }
+}
+
+function scheduleProjectionUpdate(plot) {
+  if (!plot || plot.projectionDirty.value) {
+    return;
+  }
+  plot.projectionDirty.value = true;
+  requestAnimationFrame(() => {
+    plot.projectionDirty.value = false;
+    renderProjections(plot);
+  });
+}
+
+function renderProjections(plot) {
+  if (!plot?.xProjectionCtx || !plot?.yProjectionCtx) {
+    return;
+  }
+  const xCanvas = plot.xProjection;
+  const yCanvas = plot.yProjection;
+  const xCtx = plot.xProjectionCtx;
+  const yCtx = plot.yProjectionCtx;
+  const wrap = plot.canvasWrap;
+  const dpr = window.devicePixelRatio || 1;
+  const targetWidth = wrap?.clientWidth || 240;
+  const targetHeight = wrap?.clientHeight || 240;
+  const xWidth = targetWidth;
+  const xHeight = xCanvas.clientHeight || 60;
+  const yWidth = yCanvas.clientWidth || 60;
+  const yHeight = targetHeight;
+
+  xCanvas.style.width = `${xWidth}px`;
+  yCanvas.style.height = `${yHeight}px`;
+
+  xCanvas.width = Math.floor(xWidth * dpr);
+  xCanvas.height = Math.floor(xHeight * dpr);
+  xCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  xCtx.clearRect(0, 0, xWidth, xHeight);
+  xCtx.clearRect(0, 0, xWidth, xHeight);
+
+  yCanvas.width = Math.floor(yWidth * dpr);
+  yCanvas.height = Math.floor(yHeight * dpr);
+  yCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  yCtx.clearRect(0, 0, yWidth, yHeight);
+  yCtx.clearRect(0, 0, yWidth, yHeight);
+
+  let maxX = 0;
+  let minX = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < plot.xSums.length; i++) {
+    const mean = plot.xSums[i] / Math.max(1, gridY);
+    if (mean > maxX) maxX = mean;
+    if (mean < minX) minX = mean;
+  }
+  if (!Number.isFinite(minX)) minX = 0;
+  let maxY = 0;
+  let minY = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < plot.ySums.length; i++) {
+    const mean = plot.ySums[i] / Math.max(1, plot.rowCounts[i]);
+    if (mean > maxY) maxY = mean;
+    if (mean < minY) minY = mean;
+  }
+  if (!Number.isFinite(minY)) minY = 0;
+  maxX = Math.max(minX + 1e-6, maxX);
+  maxY = Math.max(minY + 1e-6, maxY);
+  const scaleCount = (value, minValue, maxValue) => {
+    const clamped = Math.min(maxValue, Math.max(minValue, value));
+    return Math.log10(1 + (clamped - minValue));
+  };
+  const scaledMaxX = Math.max(1e-6, scaleCount(maxX, minX, maxX));
+  const scaledMaxY = Math.max(1e-6, scaleCount(maxY, minY, maxY));
+
+  const xPad = 4;
+  const xPlotWidth = Math.max(1, xWidth - xPad * 2);
+  xCtx.beginPath();
+  for (let x = 0; x < gridX; x++) {
+    const value = plot.xSums[x] / Math.max(1, gridY);
+    const h = (scaleCount(value, minX, maxX) / scaledMaxX) * (xHeight - 8);
+    const px = xPad + (x / Math.max(1, gridX - 1)) * xPlotWidth;
+    const py = xHeight - 4 - h;
+    if (x === 0) {
+      xCtx.moveTo(px, py);
+    } else {
+      xCtx.lineTo(px, py);
+    }
+  }
+  xCtx.lineTo(xPad + xPlotWidth, xHeight - 4);
+  xCtx.lineTo(xPad, xHeight - 4);
+  xCtx.closePath();
+  xCtx.fillStyle = "rgba(30,30,30,0.08)";
+  xCtx.fill();
+  xCtx.beginPath();
+  for (let x = 0; x < gridX; x++) {
+    const value = plot.xSums[x] / Math.max(1, gridY);
+    const h = (scaleCount(value, minX, maxX) / scaledMaxX) * (xHeight - 8);
+    const px = xPad + (x / Math.max(1, gridX - 1)) * xPlotWidth;
+    const py = xHeight - 4 - h;
+    if (x === 0) {
+      xCtx.moveTo(px, py);
+    } else {
+      xCtx.lineTo(px, py);
+    }
+  }
+  xCtx.strokeStyle = "rgba(30,30,30,0.85)";
+  xCtx.lineWidth = 1.6;
+  xCtx.stroke();
+
+  const yPad = 4;
+  const yPlotHeight = Math.max(1, yHeight - yPad * 2);
+  yCtx.beginPath();
+  for (let y = 0; y < gridY; y++) {
+    const value = plot.ySums[y] / Math.max(1, plot.rowCounts[y]);
+    const w = (scaleCount(value, minY, maxY) / scaledMaxY) * (yWidth - 8);
+    const px = yPad + w;
+    const py = yPad + (y / Math.max(1, gridY - 1)) * yPlotHeight;
+    if (y === 0) {
+      yCtx.moveTo(px, py);
+    } else {
+      yCtx.lineTo(px, py);
+    }
+  }
+  yCtx.lineTo(yPad, yPad + yPlotHeight);
+  yCtx.lineTo(yPad, yPad);
+  yCtx.closePath();
+  yCtx.fillStyle = "rgba(30,30,30,0.08)";
+  yCtx.fill();
+  yCtx.beginPath();
+  for (let y = 0; y < gridY; y++) {
+    const value = plot.ySums[y] / Math.max(1, plot.rowCounts[y]);
+    const w = (scaleCount(value, minY, maxY) / scaledMaxY) * (yWidth - 8);
+    const px = yPad + w;
+    const py = yPad + (y / Math.max(1, gridY - 1)) * yPlotHeight;
+    if (y === 0) {
+      yCtx.moveTo(px, py);
+    } else {
+      yCtx.lineTo(px, py);
+    }
+  }
+  yCtx.strokeStyle = "rgba(30,30,30,0.85)";
+  yCtx.lineWidth = 1.6;
+  yCtx.stroke();
+
+  drawProjectionScaleX(xCtx, xWidth, xHeight, minX, maxX);
+  drawProjectionScaleY(yCtx, yWidth, yHeight, minY, maxY);
+}
+
+function drawProjectionScaleX(ctx, width, height, minValue, maxValue) {
+  ctx.save();
+  ctx.strokeStyle = "rgba(30,30,30,0.6)";
+  ctx.fillStyle = "rgba(30,30,30,0.8)";
+  ctx.lineWidth = 1;
+  const left = 4;
+  const right = width - 4;
+  const bottom = height - 4;
+  const top = 4;
+  ctx.beginPath();
+  ctx.moveTo(left, top);
+  ctx.lineTo(left, bottom);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(left, top);
+  ctx.lineTo(left + 6, top);
+  ctx.moveTo(left, bottom);
+  ctx.lineTo(left + 6, bottom);
+  ctx.stroke();
+  ctx.font = "10px sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "bottom";
+  ctx.fillText(`${minValue.toFixed(1)}`, left + 8, bottom);
+  ctx.textBaseline = "top";
+  ctx.fillText(`${maxValue.toFixed(1)}`, left + 8, top);
+  ctx.textBaseline = "top";
+  ctx.textAlign = "right";
+  ctx.fillText("log", right, top);
+  ctx.restore();
+}
+
+function drawProjectionScaleY(ctx, width, height, minValue, maxValue) {
+  ctx.save();
+  ctx.strokeStyle = "rgba(30,30,30,0.6)";
+  ctx.fillStyle = "rgba(30,30,30,0.8)";
+  ctx.lineWidth = 1;
+  const left = 4;
+  const right = width - 4;
+  const bottom = height - 4;
+  const top = 4;
+  ctx.beginPath();
+  ctx.moveTo(left, bottom);
+  ctx.lineTo(right, bottom);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(left, bottom);
+  ctx.lineTo(left, bottom - 6);
+  ctx.moveTo(right, bottom);
+  ctx.lineTo(right, bottom - 6);
+  ctx.stroke();
+  ctx.font = "10px sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "bottom";
+  ctx.fillText(`${minValue.toFixed(1)}`, left, bottom - 8);
+  ctx.textAlign = "right";
+  ctx.fillText(`${maxValue.toFixed(1)}`, right, bottom - 8);
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.fillText("log", left, top);
+  ctx.restore();
 }
 
 function startStatusPolling() {
