@@ -10,7 +10,6 @@
     <header>
       <h1>STXM Real-time Map</h1>
       <div class="header-status">
-        <div id="fps">0 fps</div>
         <div id="status">Connecting…</div>
       </div>
     </header>
@@ -34,6 +33,20 @@
           <input type="checkbox" id="autoscale" checked />
           <span>Auto scale</span>
         </label>
+        <div class="histogram">
+          <div class="histogram-title">Histogram</div>
+          <div class="histogram-axis">
+            <span class="histogram-y-label">Count</span>
+            <div class="histogram-canvas-wrap">
+              <canvas id="histogram-canvas" width="240" height="80"></canvas>
+              <span class="histogram-x-label">Value</span>
+            </div>
+          </div>
+          <label class="toggle histogram-toggle">
+            <input type="checkbox" id="histogram-log" />
+            <span>Log scale</span>
+          </label>
+        </div>
         <div class="contrast-controls">
           <div class="contrast-row">
             <span>Min</span>
@@ -64,6 +77,37 @@
     <main>
       <div id="plots"></div>
     </main>
+    <footer class="footer-status">
+      <div id="fps">0 fps</div>
+      <div class="status-row">
+        <span class="status-label">Detector</span>
+        <span id="status-detector" class="status-pill">
+          <span class="status-dot"></span>
+          <span class="status-text">unknown</span>
+        </span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Stream</span>
+        <span id="status-stream" class="status-pill">
+          <span class="status-dot"></span>
+          <span class="status-text">idle</span>
+        </span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Filewriter</span>
+        <span id="status-filewriter" class="status-pill">
+          <span class="status-dot"></span>
+          <span class="status-text">idle</span>
+        </span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Monitor</span>
+        <span id="status-monitor" class="status-pill">
+          <span class="status-dot"></span>
+          <span class="status-text">ok</span>
+        </span>
+      </div>
+    </footer>
     <script src="app.js"></script>
   </body>
 </html>

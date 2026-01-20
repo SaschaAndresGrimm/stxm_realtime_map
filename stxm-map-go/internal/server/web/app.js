@@ -17,6 +17,7 @@ const contrastMinValue = document.getElementById("contrast-min-value");
 const contrastMaxValue = document.getElementById("contrast-max-value");
 const histogramCanvas = document.getElementById("histogram-canvas");
 const histogramCtx = histogramCanvas?.getContext("2d");
+const histogramLogToggle = document.getElementById("histogram-log");
 const detectorStatusEl = document.getElementById("status-detector");
 const streamStatusEl = document.getElementById("status-stream");
 const filewriterStatusEl = document.getElementById("status-filewriter");
@@ -371,6 +372,10 @@ autoscaleToggle?.addEventListener("change", () => {
   scheduleHistogramUpdate();
 });
 
+histogramLogToggle?.addEventListener("change", () => {
+  scheduleHistogramUpdate();
+});
+
 let resizing = false;
 let startX = 0;
 let startWidth = 0;
@@ -506,6 +511,11 @@ function renderHistogram() {
     counts[idx] += 1;
   }
   const maxCount = Math.max(...counts, 1);
+  const useLog = histogramLogToggle?.checked;
+  const scaleCount = useLog
+    ? (value) => Math.log10(1 + value)
+    : (value) => value;
+  const scaledMax = Math.max(scaleCount(maxCount), 1);
 
   const dpr = window.devicePixelRatio || 1;
   const width = histogramCanvas.clientWidth || histogramCanvas.width;
@@ -517,7 +527,7 @@ function renderHistogram() {
 
   const barWidth = width / bins;
   for (let i = 0; i < bins; i++) {
-    const h = (counts[i] / maxCount) * (height - 6);
+    const h = (scaleCount(counts[i]) / scaledMax) * (height - 6);
     const t = i / (bins - 1);
     const [r, g, b] = colorFromScheme(t, currentScheme);
     histogramCtx.fillStyle = `rgb(${r}, ${g}, ${b})`;
