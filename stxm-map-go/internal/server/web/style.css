@@ -229,6 +229,12 @@ canvas {
   cursor: pointer;
 }
 
+.export-wide {
+  width: 100%;
+  padding: 6px 8px;
+  font-weight: 600;
+}
+
 .tooltip {
   position: absolute;
   pointer-events: none;
@@ -324,7 +330,7 @@ select {
   height: 80px;
   display: block;
   border-radius: 6px;
-  background: #101010;
+  background: transparent;
 }
 
 .histogram-toggle {

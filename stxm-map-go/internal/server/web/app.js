@@ -8,6 +8,7 @@ const zoomOutBtn = document.getElementById("zoom-out");
 const zoomResetBtn = document.getElementById("zoom-reset");
 const zoomSlider = document.getElementById("zoom-slider");
 const syncViewsToggle = document.getElementById("sync-views");
+const exportSnapshotBtn = document.getElementById("export-snapshot");
 const controlPanel = document.getElementById("control-panel");
 const panelHandle = document.getElementById("panel-handle");
 const colorSchemeSelect = document.getElementById("color-scheme");
@@ -41,6 +42,10 @@ updateContrastControls();
 updatePanelPadding();
 startStatusPolling();
 attachHistogramInteractions();
+
+exportSnapshotBtn?.addEventListener("click", () => {
+  exportSnapshot();
+});
 
 function createPlot(threshold) {
   const container = document.createElement("div");
@@ -640,11 +645,16 @@ function renderHistogram() {
 
   const dpr = window.devicePixelRatio || 1;
   const width = histogramCanvas.clientWidth || histogramCanvas.width;
-  const height = histogramCanvas.clientHeight || histogramCanvas.height;
+  const plotHeight = histogramCanvas.clientHeight || histogramCanvas.height;
+  const axisPad = 16;
+  const height = plotHeight;
+  const totalHeight = plotHeight + axisPad;
   histogramCanvas.width = Math.floor(width * dpr);
-  histogramCanvas.height = Math.floor(height * dpr);
+  histogramCanvas.height = Math.floor(totalHeight * dpr);
   histogramCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  histogramCtx.clearRect(0, 0, width, height);
+  histogramCtx.clearRect(0, 0, width, totalHeight);
+  histogramCtx.fillStyle = "#101010";
+  histogramCtx.fillRect(0, 0, width, height);
 
   const barWidth = width / bins;
   for (let i = 0; i < bins; i++) {
@@ -664,6 +674,25 @@ function renderHistogram() {
   const rightT = (rightVal - rangeMin) / rangeSpan;
   const leftX = Math.min(width, Math.max(0, leftT * width));
   const rightX = Math.min(width, Math.max(0, rightT * width));
+
+  histogramCtx.fillStyle = "rgba(30,30,30,0.9)";
+  histogramCtx.font = "10px \"Helvetica Neue\", Helvetica, Arial, sans-serif";
+  histogramCtx.textBaseline = "top";
+  histogramCtx.textAlign = "center";
+  const labelY = height + 4;
+  const ticks = 5;
+  histogramCtx.strokeStyle = "rgba(245,245,245,0.7)";
+  histogramCtx.lineWidth = 1;
+  histogramCtx.beginPath();
+  for (let i = 0; i <= ticks; i++) {
+    const t = i / ticks;
+    const x = t * width;
+    histogramCtx.moveTo(x, height - 2);
+    histogramCtx.lineTo(x, height + 2);
+    const value = rangeMin + t * (rangeMax - rangeMin);
+    histogramCtx.fillText(value.toFixed(1), x, labelY);
+  }
+  histogramCtx.stroke();
 
   histogramCtx.strokeStyle = "rgba(245,245,245,0.9)";
   histogramCtx.lineWidth = 2;
@@ -687,6 +716,114 @@ function renderHistogram() {
   histogramCtx.lineTo(rightX, 8);
   histogramCtx.closePath();
   histogramCtx.fill();
+}
+
+function exportSnapshot() {
+  const plotList = Array.from(plots.values());
+  if (!plotList.length) {
+    return;
+  }
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const padding = 16;
+  const blockGap = 16;
+  const titleHeight = 20;
+
+  const histogramWidth = histogramCanvas?.clientWidth || 240;
+  const histogramHeight = histogramCanvas?.clientHeight || 80;
+  const histBlockHeight = histogramCanvas ? histogramHeight + 30 : 0;
+
+  const blocks = plotList.map((plot) => {
+    const mapWidth = plot.canvas.clientWidth || gridX;
+    const mapHeight = plot.canvas.clientHeight || gridY;
+    const yWidth = plot.yProjection?.clientWidth || 60;
+    const xHeight = plot.xProjection?.clientHeight || 60;
+    const width = mapWidth + yWidth + 8 + padding * 2;
+    const height = mapHeight + xHeight + 8 + titleHeight + padding * 2;
+    return { plot, mapWidth, mapHeight, yWidth, xHeight, width, height };
+  });
+
+  const blocksRowWidth = blocks.reduce((sum, block) => sum + block.width, 0) + blockGap * Math.max(0, blocks.length - 1);
+  const maxBlockHeight = blocks.reduce((max, block) => Math.max(max, block.height), 0);
+  const snapshotWidth = Math.max(blocksRowWidth + padding * 2, histogramWidth + padding * 2);
+  const snapshotHeight = padding + histBlockHeight + maxBlockHeight + padding;
+
+  const canvas = document.createElement("canvas");
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.floor(snapshotWidth * dpr);
+  canvas.height = Math.floor(snapshotHeight * dpr);
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, snapshotWidth, snapshotHeight);
+  ctx.fillStyle = "#111";
+  ctx.font = "14px sans-serif";
+  ctx.textBaseline = "top";
+  ctx.fillText(`STXM Snapshot ${timestamp}`, padding, padding);
+
+  let cursorY = padding + 24;
+  if (histogramCanvas) {
+    ctx.fillStyle = "#222";
+    ctx.font = "12px sans-serif";
+    ctx.fillText("Histogram", padding, cursorY);
+    ctx.drawImage(
+      histogramCanvas,
+      padding,
+      cursorY + 14,
+      histogramWidth,
+      histogramHeight
+    );
+    cursorY += histBlockHeight;
+  }
+
+  let cursorX = padding;
+  blocks.forEach((block) => {
+    const { plot, mapWidth, mapHeight, yWidth, xHeight } = block;
+    ctx.fillStyle = "#111";
+    ctx.font = "13px sans-serif";
+    ctx.fillText(plot.canvas?.closest(".plot")?.querySelector("h2")?.textContent || "plot", cursorX, cursorY);
+
+    const mapX = cursorX;
+    const mapY = cursorY + titleHeight;
+    ctx.drawImage(plot.canvas, mapX, mapY, mapWidth, mapHeight);
+    if (plot.yProjection) {
+      ctx.drawImage(plot.yProjection, mapX + mapWidth + 8, mapY, yWidth, mapHeight);
+    }
+    if (plot.xProjection) {
+      ctx.drawImage(plot.xProjection, mapX, mapY + mapHeight + 8, mapWidth, xHeight);
+    }
+    cursorX += block.width + blockGap;
+  });
+
+  canvas.toBlob((blob) => {
+    if (!blob) return;
+    const link = document.createElement("a");
+    link.download = `stxm_snapshot_${timestamp}.png`;
+    link.href = URL.createObjectURL(blob);
+    link.click();
+    URL.revokeObjectURL(link.href);
+  });
+
+  const settings = {
+    timestamp,
+    scheme: currentScheme,
+    autoscale: autoscaleToggle?.checked ?? true,
+    manualMin,
+    manualMax,
+    zoom: globalZoom,
+    syncViews: syncViewsToggle?.checked ?? true,
+    histogramLog: histogramLogToggle?.checked ?? false,
+    thresholds: plotList.map((plot) => ({
+      name: plot.canvas?.closest(".plot")?.querySelector("h2")?.textContent || "plot",
+      min: plot.minValue.value,
+      max: plot.maxValue.value,
+    })),
+  };
+  const settingsBlob = new Blob([JSON.stringify(settings, null, 2)], { type: "application/json" });
+  const settingsLink = document.createElement("a");
+  settingsLink.download = `stxm_snapshot_${timestamp}.json`;
+  settingsLink.href = URL.createObjectURL(settingsBlob);
+  settingsLink.click();
+  URL.revokeObjectURL(settingsLink.href);
 }
 
 function scheduleProjectionUpdate(plot) {
