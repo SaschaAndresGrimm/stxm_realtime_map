@@ -10,6 +10,7 @@ const zoomSlider = document.getElementById("zoom-slider");
 const syncViewsToggle = document.getElementById("sync-views");
 const controlPanel = document.getElementById("control-panel");
 const panelHandle = document.getElementById("panel-handle");
+const colorSchemeSelect = document.getElementById("color-scheme");
 
 let gridX = 0;
 let gridY = 0;
@@ -18,6 +19,7 @@ let lastFrameTime = performance.now();
 let frameCount = 0;
 let globalZoom = 1;
 const labelMinPixels = 20;
+let currentScheme = "blue-yellow-red";
 
 function createPlot(threshold) {
   const container = document.createElement("div");
@@ -64,6 +66,7 @@ function createPlot(threshold) {
 
   const colorbar = document.createElement("div");
   colorbar.className = "colorbar";
+  colorbar.style.background = gradientFromScheme(currentScheme);
   const labels = document.createElement("div");
   labels.className = "colorbar-labels";
   const minLabel = document.createElement("span");
@@ -171,6 +174,7 @@ function createPlot(threshold) {
     canvasInner,
     gridOverlay,
     pixelLabels,
+    colorbar,
   });
 
   canvasWrap.addEventListener("scroll", () => {
@@ -222,10 +226,7 @@ function updatePixel(threshold, imageId, value) {
   const denom = Math.max(1, maxVal - minVal);
   const norm = (value - minVal) / denom;
   const intensity = Math.min(255, Math.floor(norm * 255));
-  const t = intensity / 255;
-  const r = Math.floor(255 * t);
-  const g = Math.floor(180 * t);
-  const b = Math.floor(255 * (1 - t));
+  const [r, g, b] = colorFromScheme(intensity / 255, currentScheme);
 
   plot.imageData.data[idx] = r;
   plot.imageData.data[idx + 1] = g;
@@ -333,6 +334,15 @@ window.addEventListener("keydown", (event) => {
   }
 });
 
+colorSchemeSelect?.addEventListener("change", () => {
+  currentScheme = colorSchemeSelect.value;
+  plots.forEach((plot) => redrawPlot(plot));
+});
+
+autoscaleToggle?.addEventListener("change", () => {
+  plots.forEach((plot) => redrawPlot(plot));
+});
+
 let resizing = false;
 let startX = 0;
 let startWidth = 0;
@@ -359,6 +369,76 @@ window.addEventListener("mousemove", (event) => {
 window.addEventListener("mouseup", () => {
   resizing = false;
 });
+
+function redrawPlot(plot) {
+  let minVal = plot.minValue.value;
+  let maxVal = plot.maxValue.value;
+  if (!autoscaleToggle.checked) {
+    minVal = 0;
+    maxVal = 255;
+  }
+  if (autoscaleToggle.checked) {
+    plot.minLabel.textContent = `${plot.minValue.value}`;
+    plot.maxLabel.textContent = `${plot.maxValue.value}`;
+  } else {
+    plot.minLabel.textContent = "0";
+    plot.maxLabel.textContent = "255";
+  }
+  const denom = Math.max(1, maxVal - minVal);
+  for (let i = 0; i < plot.values.length; i++) {
+    const value = plot.values[i];
+    const norm = (value - minVal) / denom;
+    const [r, g, b] = colorFromScheme(norm, currentScheme);
+    const idx = i * 4;
+    plot.imageData.data[idx] = r;
+    plot.imageData.data[idx + 1] = g;
+    plot.imageData.data[idx + 2] = b;
+    plot.imageData.data[idx + 3] = 255;
+  }
+  plot.ctx.putImageData(plot.imageData, 0, 0);
+  if (plot.colorbar) {
+    plot.colorbar.style.background = gradientFromScheme(currentScheme);
+  }
+  updatePixelLabels(plot);
+}
+
+function colorFromScheme(t, scheme) {
+  const clamp = (v) => Math.min(1, Math.max(0, v));
+  const x = clamp(t);
+  if (scheme === "gray") {
+    const v = Math.floor(255 * x);
+    return [v, v, v];
+  }
+  if (scheme === "heat") {
+    const r = Math.floor(255 * x);
+    const g = Math.floor(200 * Math.pow(x, 0.7));
+    const b = Math.floor(80 * Math.pow(x, 2));
+    return [r, g, b];
+  }
+  if (scheme === "viridis") {
+    const r = Math.floor(255 * (0.1 + 0.9 * x));
+    const g = Math.floor(255 * (0.2 + 0.8 * Math.sin(x * Math.PI)));
+    const b = Math.floor(255 * (0.9 - 0.9 * x));
+    return [r, g, b];
+  }
+  const r = Math.floor(255 * x);
+  const g = Math.floor(180 * x);
+  const b = Math.floor(255 * (1 - x));
+  return [r, g, b];
+}
+
+function gradientFromScheme(scheme) {
+  if (scheme === "gray") {
+    return "linear-gradient(90deg, #000, #fff)";
+  }
+  if (scheme === "heat") {
+    return "linear-gradient(90deg, #220000, #ffb400, #ff0000)";
+  }
+  if (scheme === "viridis") {
+    return "linear-gradient(90deg, #440154, #31688e, #35b779, #fde725)";
+  }
+  return "linear-gradient(90deg, #0000ff, #ffb400, #ff0000)";
+}
 
 syncViewsToggle?.addEventListener("change", () => {
   if (syncViewsToggle.checked) {
