@@ -15,6 +15,10 @@ const contrastMin = document.getElementById("contrast-min");
 const contrastMax = document.getElementById("contrast-max");
 const contrastMinValue = document.getElementById("contrast-min-value");
 const contrastMaxValue = document.getElementById("contrast-max-value");
+const detectorStatusEl = document.getElementById("status-detector");
+const streamStatusEl = document.getElementById("status-stream");
+const filewriterStatusEl = document.getElementById("status-filewriter");
+const monitorStatusEl = document.getElementById("status-monitor");
 
 let gridX = 0;
 let gridY = 0;
@@ -29,6 +33,7 @@ let manualMax = 255;
 
 updateContrastControls();
 updatePanelPadding();
+startStatusPolling();
 
 function createPlot(threshold) {
   const container = document.createElement("div");
@@ -250,6 +255,10 @@ ws.addEventListener("open", () => {
 });
 ws.addEventListener("close", () => {
   statusEl.textContent = "Disconnected";
+  setStatus(detectorStatusEl, "na");
+  setStatus(streamStatusEl, "na");
+  setStatus(filewriterStatusEl, "na");
+  setStatus(monitorStatusEl, "na");
 });
 ws.addEventListener("message", (event) => {
   const msg = JSON.parse(event.data);
@@ -446,6 +455,55 @@ function updateContrastControls() {
   if (contrastMax) contrastMax.disabled = disabled;
   if (contrastMinValue) contrastMinValue.textContent = `${manualMin}`;
   if (contrastMaxValue) contrastMaxValue.textContent = `${manualMax}`;
+}
+
+function startStatusPolling() {
+  setInterval(async () => {
+    try {
+      const res = await fetch("/status");
+      if (!res.ok) {
+        return;
+      }
+      const data = await res.json();
+      setStatus(detectorStatusEl, data.detector);
+      setStatus(streamStatusEl, data.stream);
+      setStatus(filewriterStatusEl, data.filewriter);
+      setStatus(monitorStatusEl, data.monitor);
+    } catch (err) {
+      setStatus(streamStatusEl, "error");
+    }
+  }, 1000);
+}
+
+function setStatus(el, value) {
+  if (!el) return;
+  const textEl = el.querySelector(".status-text");
+  if (textEl) {
+    textEl.textContent = value || "unknown";
+  }
+  el.classList.remove("status-ok", "status-warn", "status-error", "status-info", "status-idle");
+  const cls = statusClass(value);
+  if (cls) {
+    el.classList.add(cls);
+  }
+}
+
+function statusClass(value) {
+  switch (value) {
+    case "ok":
+    case "connected":
+    case "receiving":
+      return "status-ok";
+    case "idle":
+      return "status-idle";
+    case "writing":
+    case "simulator":
+      return "status-info";
+    case "error":
+      return "status-error";
+    default:
+      return "status-warn";
+  }
 }
 
 function colorFromScheme(t, scheme) {
