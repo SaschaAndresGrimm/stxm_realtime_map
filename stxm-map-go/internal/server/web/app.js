@@ -450,7 +450,7 @@ function updateContrastControls() {
 
 function colorFromScheme(t, scheme) {
   const clamp = (v) => Math.min(1, Math.max(0, v));
-  const x = clamp(t);
+  let x = clamp(t);
   if (scheme === "gray") {
     const v = Math.floor(255 * x);
     return [v, v, v];
@@ -465,6 +465,13 @@ function colorFromScheme(t, scheme) {
     const r = Math.floor(255 * (0.1 + 0.9 * x));
     const g = Math.floor(255 * (0.2 + 0.8 * Math.sin(x * Math.PI)));
     const b = Math.floor(255 * (0.9 - 0.9 * x));
+    return [r, g, b];
+  }
+  if (scheme === "albula-hdr") {
+    x = Math.log10(1 + 9 * x); // boost low intensities
+    const r = Math.floor(255 * (0.12 + 0.88 * x));
+    const g = Math.floor(255 * (0.08 + 0.82 * Math.pow(x, 0.8)));
+    const b = Math.floor(255 * (0.3 + 0.7 * (1 - Math.pow(x, 0.6))));
     return [r, g, b];
   }
   const r = Math.floor(255 * x);
@@ -482,6 +489,9 @@ function gradientFromScheme(scheme) {
   }
   if (scheme === "viridis") {
     return "linear-gradient(90deg, #440154, #31688e, #35b779, #fde725)";
+  }
+  if (scheme === "albula-hdr") {
+    return "linear-gradient(90deg, #001a33, #0b3c6f, #3f8fd2, #ffd54a, #ff5a3d)";
   }
   return "linear-gradient(90deg, #0000ff, #ffb400, #ff0000)";
 }
