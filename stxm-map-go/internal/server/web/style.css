@@ -130,6 +130,21 @@ canvas {
   z-index: 10;
 }
 
+.pixel-labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.pixel-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.9);
+}
+
 .toggle {
   display: flex;
   align-items: center;

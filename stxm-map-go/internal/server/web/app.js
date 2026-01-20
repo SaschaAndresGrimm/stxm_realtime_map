@@ -14,6 +14,7 @@ const plots = new Map();
 let lastFrameTime = performance.now();
 let frameCount = 0;
 let globalZoom = 1;
+const labelMinPixels = 20;
 
 function createPlot(threshold) {
   const container = document.createElement("div");
@@ -35,6 +36,8 @@ function createPlot(threshold) {
   gridOverlay.className = "grid-overlay";
   const tooltip = document.createElement("div");
   tooltip.className = "tooltip";
+  const pixelLabels = document.createElement("div");
+  pixelLabels.className = "pixel-labels";
 
   canvas.width = gridX;
   canvas.height = gridY;
@@ -50,6 +53,7 @@ function createPlot(threshold) {
   container.appendChild(controls);
   canvasInner.appendChild(canvas);
   canvasInner.appendChild(gridOverlay);
+  canvasInner.appendChild(pixelLabels);
   canvasWrap.appendChild(canvasInner);
   canvasWrap.appendChild(tooltip);
   container.appendChild(canvasWrap);
@@ -151,6 +155,7 @@ function createPlot(threshold) {
     canvasWrap,
     canvasInner,
     gridOverlay,
+    pixelLabels,
   });
 }
 
@@ -228,6 +233,8 @@ ws.addEventListener("message", (event) => {
     updatePixel(threshold, imageId, value);
   });
 
+  plots.forEach((plot) => updatePixelLabels(plot));
+
   frameCount += 1;
   const now = performance.now();
   if (now - lastFrameTime >= 1000) {
@@ -249,6 +256,7 @@ function updatePlotScale(plot) {
   plot.canvasInner.style.width = `${widthPx}px`;
   plot.canvasInner.style.height = `${heightPx}px`;
   plot.gridOverlay.style.backgroundSize = `${pixelSize}px ${pixelSize}px`;
+  updatePixelLabels(plot);
 }
 
 function setGlobalZoom(value) {
@@ -290,3 +298,21 @@ window.addEventListener("keydown", (event) => {
     setGlobalZoom(1);
   }
 });
+
+function updatePixelLabels(plot) {
+  const pixelSize = plot.basePixel.value * globalZoom;
+  if (pixelSize < labelMinPixels) {
+    plot.pixelLabels.style.display = "none";
+    return;
+  }
+  plot.pixelLabels.style.display = "grid";
+  plot.pixelLabels.style.gridTemplateColumns = `repeat(${gridX}, ${pixelSize}px)`;
+  plot.pixelLabels.style.gridAutoRows = `${pixelSize}px`;
+  plot.pixelLabels.innerHTML = "";
+  for (let i = 0; i < plot.values.length; i++) {
+    const cell = document.createElement("div");
+    cell.className = "pixel-label";
+    cell.textContent = plot.values[i];
+    plot.pixelLabels.appendChild(cell);
+  }
+}
