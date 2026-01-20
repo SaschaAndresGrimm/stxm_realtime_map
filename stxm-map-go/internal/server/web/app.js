@@ -15,6 +15,8 @@ const contrastMin = document.getElementById("contrast-min");
 const contrastMax = document.getElementById("contrast-max");
 const contrastMinValue = document.getElementById("contrast-min-value");
 const contrastMaxValue = document.getElementById("contrast-max-value");
+const histogramCanvas = document.getElementById("histogram-canvas");
+const histogramCtx = histogramCanvas?.getContext("2d");
 const detectorStatusEl = document.getElementById("status-detector");
 const streamStatusEl = document.getElementById("status-stream");
 const filewriterStatusEl = document.getElementById("status-filewriter");
@@ -30,6 +32,8 @@ const labelMinPixels = 20;
 let currentScheme = "blue-yellow-red";
 let manualMin = 0;
 let manualMax = 255;
+let histogramThreshold = "";
+let histogramDirty = false;
 
 updateContrastControls();
 updatePanelPadding();
@@ -267,11 +271,13 @@ ws.addEventListener("message", (event) => {
     gridY = msg.grid_y;
     plotsEl.innerHTML = "";
     (msg.thresholds || []).forEach(createPlot);
+    histogramThreshold = (msg.thresholds || [])[0] || "";
     plots.forEach((plot) => {
       const rect = plot.canvasWrap.getBoundingClientRect();
       plot.basePixel.value = Math.max(6, Math.floor(rect.width / gridX));
       updatePlotScale(plot);
     });
+    scheduleHistogramUpdate();
     return;
   }
 
@@ -282,6 +288,7 @@ ws.addEventListener("message", (event) => {
   });
 
   plots.forEach((plot) => updatePixelLabels(plot));
+  scheduleHistogramUpdate();
 
   frameCount += 1;
   const now = performance.now();
@@ -355,11 +362,13 @@ window.addEventListener("keydown", (event) => {
 colorSchemeSelect?.addEventListener("change", () => {
   currentScheme = colorSchemeSelect.value;
   plots.forEach((plot) => redrawPlot(plot));
+  scheduleHistogramUpdate();
 });
 
 autoscaleToggle?.addEventListener("change", () => {
   plots.forEach((plot) => redrawPlot(plot));
   updateContrastControls();
+  scheduleHistogramUpdate();
 });
 
 let resizing = false;
@@ -386,10 +395,15 @@ window.addEventListener("mousemove", (event) => {
   const nextWidth = Math.min(420, Math.max(200, startWidth + delta));
   controlPanel.style.width = `${nextWidth}px`;
   document.body.style.setProperty("--panel-width", `${nextWidth}px`);
+  scheduleHistogramUpdate();
 });
 
 window.addEventListener("mouseup", () => {
   resizing = false;
+});
+
+window.addEventListener("resize", () => {
+  scheduleHistogramUpdate();
 });
 
 function updatePanelPadding() {
@@ -408,6 +422,7 @@ contrastMin?.addEventListener("input", () => {
   contrastMin.value = `${manualMin}`;
   if (contrastMinValue) contrastMinValue.textContent = `${manualMin}`;
   plots.forEach((plot) => redrawPlot(plot));
+  scheduleHistogramUpdate();
 });
 
 contrastMax?.addEventListener("input", () => {
@@ -415,6 +430,7 @@ contrastMax?.addEventListener("input", () => {
   contrastMax.value = `${manualMax}`;
   if (contrastMaxValue) contrastMaxValue.textContent = `${manualMax}`;
   plots.forEach((plot) => redrawPlot(plot));
+  scheduleHistogramUpdate();
 });
 
 function redrawPlot(plot) {
@@ -447,6 +463,7 @@ function redrawPlot(plot) {
     plot.colorbar.style.background = gradientFromScheme(currentScheme);
   }
   updatePixelLabels(plot);
+  scheduleHistogramUpdate();
 }
 
 function updateContrastControls() {
@@ -455,6 +472,57 @@ function updateContrastControls() {
   if (contrastMax) contrastMax.disabled = disabled;
   if (contrastMinValue) contrastMinValue.textContent = `${manualMin}`;
   if (contrastMaxValue) contrastMaxValue.textContent = `${manualMax}`;
+}
+
+function scheduleHistogramUpdate() {
+  if (!histogramCanvas || !histogramCtx || histogramDirty) {
+    return;
+  }
+  histogramDirty = true;
+  requestAnimationFrame(() => {
+    histogramDirty = false;
+    renderHistogram();
+  });
+}
+
+function renderHistogram() {
+  if (!histogramCanvas || !histogramCtx) {
+    return;
+  }
+  const plot = plots.get(histogramThreshold) || plots.values().next().value;
+  if (!plot) {
+    histogramCtx.clearRect(0, 0, histogramCanvas.width, histogramCanvas.height);
+    return;
+  }
+  const bins = 64;
+  const minVal = plot.minValue.value;
+  const maxVal = plot.maxValue.value;
+  const denom = Math.max(1, maxVal - minVal);
+  const counts = new Array(bins).fill(0);
+  for (let i = 0; i < plot.values.length; i++) {
+    const value = plot.values[i];
+    const t = (value - minVal) / denom;
+    const idx = Math.min(bins - 1, Math.max(0, Math.floor(t * (bins - 1))));
+    counts[idx] += 1;
+  }
+  const maxCount = Math.max(...counts, 1);
+
+  const dpr = window.devicePixelRatio || 1;
+  const width = histogramCanvas.clientWidth || histogramCanvas.width;
+  const height = histogramCanvas.clientHeight || histogramCanvas.height;
+  histogramCanvas.width = Math.floor(width * dpr);
+  histogramCanvas.height = Math.floor(height * dpr);
+  histogramCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  histogramCtx.clearRect(0, 0, width, height);
+
+  const barWidth = width / bins;
+  for (let i = 0; i < bins; i++) {
+    const h = (counts[i] / maxCount) * (height - 6);
+    const t = i / (bins - 1);
+    const [r, g, b] = colorFromScheme(t, currentScheme);
+    histogramCtx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+    histogramCtx.fillRect(i * barWidth, height - h, Math.max(1, barWidth - 1), h);
+  }
 }
 
 function startStatusPolling() {
