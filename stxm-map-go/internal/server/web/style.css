@@ -25,8 +25,15 @@ h1 {
   text-transform: uppercase;
 }
 
-#status {
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
   font-size: 12px;
+  opacity: 0.85;
+}
+
+#status {
   opacity: 0.7;
 }
 
@@ -86,4 +93,39 @@ canvas {
   background-size: var(--grid-size, 16px) var(--grid-size, 16px);
   mix-blend-mode: screen;
   opacity: 0.5;
+}
+
+.plot-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.export-btn {
+  font-size: 11px;
+  border: 1px solid #ccc;
+  background: #fff;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  font-size: 11px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  transform: translate(6px, 6px);
+  white-space: nowrap;
+  display: none;
+  z-index: 10;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }

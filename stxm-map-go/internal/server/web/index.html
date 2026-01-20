@@ -9,7 +9,14 @@
   <body>
     <header>
       <h1>STXM Real-time Map</h1>
-      <div id="status">Connecting…</div>
+      <div class="header-controls">
+        <label class="toggle">
+          <input type="checkbox" id="autoscale" checked />
+          <span>Auto scale</span>
+        </label>
+        <div id="fps">0 fps</div>
+        <div id="status">Connecting…</div>
+      </div>
     </header>
     <main>
       <div id="plots"></div>
