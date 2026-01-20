@@ -28,6 +28,7 @@ let manualMin = 0;
 let manualMax = 255;
 
 updateContrastControls();
+updatePanelPadding();
 
 function createPlot(threshold) {
   const container = document.createElement("div");
@@ -358,6 +359,7 @@ let startWidth = 0;
 
 panelHandle?.addEventListener("click", () => {
   controlPanel?.classList.toggle("panel-open");
+  updatePanelPadding();
 });
 
 panelHandle?.addEventListener("mousedown", (event) => {
@@ -366,6 +368,7 @@ panelHandle?.addEventListener("mousedown", (event) => {
   startX = event.clientX;
   startWidth = controlPanel ? controlPanel.getBoundingClientRect().width : 260;
   controlPanel?.classList.add("panel-open");
+  updatePanelPadding();
 });
 
 window.addEventListener("mousemove", (event) => {
@@ -373,11 +376,23 @@ window.addEventListener("mousemove", (event) => {
   const delta = startX - event.clientX;
   const nextWidth = Math.min(420, Math.max(200, startWidth + delta));
   controlPanel.style.width = `${nextWidth}px`;
+  document.body.style.setProperty("--panel-width", `${nextWidth}px`);
 });
 
 window.addEventListener("mouseup", () => {
   resizing = false;
 });
+
+function updatePanelPadding() {
+  const isOpen = controlPanel?.classList.contains("panel-open");
+  if (isOpen) {
+    document.body.classList.add("panel-opened");
+    const width = controlPanel?.getBoundingClientRect().width || 260;
+    document.body.style.setProperty("--panel-width", `${width}px`);
+  } else {
+    document.body.classList.remove("panel-opened");
+  }
+}
 
 contrastMin?.addEventListener("input", () => {
   manualMin = Math.min(parseInt(contrastMin.value, 10), manualMax - 1);
