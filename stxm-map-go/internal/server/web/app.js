@@ -5,6 +5,8 @@ const autoscaleToggle = document.getElementById("autoscale");
 const zoomLevelEl = document.getElementById("zoom-level");
 const zoomInBtn = document.getElementById("zoom-in");
 const zoomOutBtn = document.getElementById("zoom-out");
+const zoomResetBtn = document.getElementById("zoom-reset");
+const zoomSlider = document.getElementById("zoom-slider");
 
 let gridX = 0;
 let gridY = 0;
@@ -255,6 +257,9 @@ function setGlobalZoom(value) {
   if (zoomLevelEl) {
     zoomLevelEl.textContent = `${globalZoom.toFixed(1)}x`;
   }
+  if (zoomSlider) {
+    zoomSlider.value = globalZoom.toFixed(1);
+  }
 }
 
 zoomInBtn?.addEventListener("click", () => {
@@ -263,4 +268,25 @@ zoomInBtn?.addEventListener("click", () => {
 
 zoomOutBtn?.addEventListener("click", () => {
   setGlobalZoom(Math.min(8, Math.max(0.5, globalZoom * 0.8)));
+});
+
+zoomResetBtn?.addEventListener("click", () => {
+  setGlobalZoom(1);
+});
+
+zoomSlider?.addEventListener("input", (event) => {
+  const value = parseFloat(event.target.value);
+  if (Number.isFinite(value)) {
+    setGlobalZoom(Math.min(8, Math.max(0.5, value)));
+  }
+});
+
+window.addEventListener("keydown", (event) => {
+  if (event.key === "+" || event.key === "=") {
+    setGlobalZoom(Math.min(8, Math.max(0.5, globalZoom * 1.25)));
+  } else if (event.key === "-" || event.key === "_") {
+    setGlobalZoom(Math.min(8, Math.max(0.5, globalZoom * 0.8)));
+  } else if (event.key === "0") {
+    setGlobalZoom(1);
+  }
 });
