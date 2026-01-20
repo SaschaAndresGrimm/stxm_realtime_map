@@ -33,6 +33,18 @@
           <input type="checkbox" id="autoscale" checked />
           <span>Auto scale</span>
         </label>
+        <div class="contrast-controls">
+          <div class="contrast-row">
+            <span>Min</span>
+            <input id="contrast-min" type="range" min="0" max="255" step="1" value="0" />
+            <span id="contrast-min-value">0</span>
+          </div>
+          <div class="contrast-row">
+            <span>Max</span>
+            <input id="contrast-max" type="range" min="0" max="255" step="1" value="255" />
+            <span id="contrast-max-value">255</span>
+          </div>
+        </div>
         <label class="toggle">
           <input type="checkbox" id="sync-views" checked />
           <span>Sync views</span>

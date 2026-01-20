@@ -11,6 +11,10 @@ const syncViewsToggle = document.getElementById("sync-views");
 const controlPanel = document.getElementById("control-panel");
 const panelHandle = document.getElementById("panel-handle");
 const colorSchemeSelect = document.getElementById("color-scheme");
+const contrastMin = document.getElementById("contrast-min");
+const contrastMax = document.getElementById("contrast-max");
+const contrastMinValue = document.getElementById("contrast-min-value");
+const contrastMaxValue = document.getElementById("contrast-max-value");
 
 let gridX = 0;
 let gridY = 0;
@@ -20,6 +24,10 @@ let frameCount = 0;
 let globalZoom = 1;
 const labelMinPixels = 20;
 let currentScheme = "blue-yellow-red";
+let manualMin = 0;
+let manualMax = 255;
+
+updateContrastControls();
 
 function createPlot(threshold) {
   const container = document.createElement("div");
@@ -211,8 +219,8 @@ function updatePixel(threshold, imageId, value) {
     plot.minLabel.textContent = `${plot.minValue.value}`;
     plot.maxLabel.textContent = `${plot.maxValue.value}`;
   } else {
-    plot.minLabel.textContent = "0";
-    plot.maxLabel.textContent = "255";
+    plot.minLabel.textContent = `${manualMin}`;
+    plot.maxLabel.textContent = `${manualMax}`;
   }
   const x = imageId % gridX;
   const y = Math.floor(imageId / gridX);
@@ -220,8 +228,8 @@ function updatePixel(threshold, imageId, value) {
   let minVal = plot.minValue.value;
   let maxVal = plot.maxValue.value;
   if (!autoscaleToggle.checked) {
-    minVal = 0;
-    maxVal = 255;
+    minVal = manualMin;
+    maxVal = manualMax;
   }
   const denom = Math.max(1, maxVal - minVal);
   const norm = (value - minVal) / denom;
@@ -341,6 +349,7 @@ colorSchemeSelect?.addEventListener("change", () => {
 
 autoscaleToggle?.addEventListener("change", () => {
   plots.forEach((plot) => redrawPlot(plot));
+  updateContrastControls();
 });
 
 let resizing = false;
@@ -370,19 +379,33 @@ window.addEventListener("mouseup", () => {
   resizing = false;
 });
 
+contrastMin?.addEventListener("input", () => {
+  manualMin = Math.min(parseInt(contrastMin.value, 10), manualMax - 1);
+  contrastMin.value = `${manualMin}`;
+  if (contrastMinValue) contrastMinValue.textContent = `${manualMin}`;
+  plots.forEach((plot) => redrawPlot(plot));
+});
+
+contrastMax?.addEventListener("input", () => {
+  manualMax = Math.max(parseInt(contrastMax.value, 10), manualMin + 1);
+  contrastMax.value = `${manualMax}`;
+  if (contrastMaxValue) contrastMaxValue.textContent = `${manualMax}`;
+  plots.forEach((plot) => redrawPlot(plot));
+});
+
 function redrawPlot(plot) {
   let minVal = plot.minValue.value;
   let maxVal = plot.maxValue.value;
   if (!autoscaleToggle.checked) {
-    minVal = 0;
-    maxVal = 255;
+    minVal = manualMin;
+    maxVal = manualMax;
   }
   if (autoscaleToggle.checked) {
     plot.minLabel.textContent = `${plot.minValue.value}`;
     plot.maxLabel.textContent = `${plot.maxValue.value}`;
   } else {
-    plot.minLabel.textContent = "0";
-    plot.maxLabel.textContent = "255";
+    plot.minLabel.textContent = `${manualMin}`;
+    plot.maxLabel.textContent = `${manualMax}`;
   }
   const denom = Math.max(1, maxVal - minVal);
   for (let i = 0; i < plot.values.length; i++) {
@@ -400,6 +423,14 @@ function redrawPlot(plot) {
     plot.colorbar.style.background = gradientFromScheme(currentScheme);
   }
   updatePixelLabels(plot);
+}
+
+function updateContrastControls() {
+  const disabled = autoscaleToggle?.checked;
+  if (contrastMin) contrastMin.disabled = disabled;
+  if (contrastMax) contrastMax.disabled = disabled;
+  if (contrastMinValue) contrastMinValue.textContent = `${manualMin}`;
+  if (contrastMaxValue) contrastMaxValue.textContent = `${manualMax}`;
 }
 
 function colorFromScheme(t, scheme) {

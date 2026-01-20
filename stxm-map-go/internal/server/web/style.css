@@ -213,6 +213,24 @@ select {
   padding: 2px 6px;
 }
 
+.contrast-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.contrast-row {
+  display: grid;
+  grid-template-columns: 32px 1fr 32px;
+  gap: 8px;
+  align-items: center;
+  font-size: 11px;
+}
+
+.contrast-row input[type="range"] {
+  width: 100%;
+}
+
 .zoom-controls {
   display: flex;
   align-items: center;
