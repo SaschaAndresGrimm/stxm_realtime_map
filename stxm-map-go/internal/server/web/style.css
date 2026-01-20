@@ -44,6 +44,7 @@ main {
   background: #fff;
   border: 1px solid #ddd;
   padding: 12px;
+  position: relative;
 }
 
 .plot h2 {
@@ -56,4 +57,33 @@ canvas {
   height: auto;
   image-rendering: pixelated;
   border: 1px solid #eee;
+  background: #111;
+  display: block;
+}
+
+.colorbar {
+  height: 10px;
+  margin-top: 8px;
+  background: linear-gradient(90deg, #0000ff, #ffb400, #ff0000);
+  border: 1px solid #ddd;
+}
+
+.colorbar-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #666;
+  margin-top: 4px;
+}
+
+.grid-overlay {
+  position: absolute;
+  inset: 32px 12px 34px 12px;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, rgba(255,255,255,0.12) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255,255,255,0.12) 1px, transparent 1px);
+  background-size: var(--grid-size, 16px) var(--grid-size, 16px);
+  mix-blend-mode: screen;
+  opacity: 0.5;
 }

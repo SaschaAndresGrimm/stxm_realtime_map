@@ -12,6 +12,8 @@ function createPlot(threshold) {
   title.textContent = threshold;
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
+  const gridOverlay = document.createElement("div");
+  gridOverlay.className = "grid-overlay";
 
   canvas.width = gridX;
   canvas.height = gridY;
@@ -21,9 +23,23 @@ function createPlot(threshold) {
 
   container.appendChild(title);
   container.appendChild(canvas);
+  container.appendChild(gridOverlay);
+
+  const colorbar = document.createElement("div");
+  colorbar.className = "colorbar";
+  const labels = document.createElement("div");
+  labels.className = "colorbar-labels";
+  const minLabel = document.createElement("span");
+  minLabel.textContent = "0";
+  const maxLabel = document.createElement("span");
+  maxLabel.textContent = "0";
+  labels.appendChild(minLabel);
+  labels.appendChild(maxLabel);
+  container.appendChild(colorbar);
+  container.appendChild(labels);
   plotsEl.appendChild(container);
 
-  plots.set(threshold, { canvas, ctx, imageData, maxValue });
+  plots.set(threshold, { canvas, ctx, imageData, maxValue, minLabel, maxLabel });
 }
 
 function updatePixel(threshold, imageId, value) {
@@ -32,15 +48,20 @@ function updatePixel(threshold, imageId, value) {
 
   if (value > plot.maxValue.value) {
     plot.maxValue.value = value;
+    plot.maxLabel.textContent = `${plot.maxValue.value}`;
   }
   const x = imageId % gridX;
   const y = Math.floor(imageId / gridX);
   const idx = (y * gridX + x) * 4;
-  const intensity = Math.floor((value / plot.maxValue.value) * 255);
+  const intensity = Math.min(255, Math.floor((value / plot.maxValue.value) * 255));
+  const t = intensity / 255;
+  const r = Math.floor(255 * t);
+  const g = Math.floor(180 * t);
+  const b = Math.floor(255 * (1 - t));
 
-  plot.imageData.data[idx] = intensity;
-  plot.imageData.data[idx + 1] = intensity;
-  plot.imageData.data[idx + 2] = intensity;
+  plot.imageData.data[idx] = r;
+  plot.imageData.data[idx + 1] = g;
+  plot.imageData.data[idx + 2] = b;
   plot.imageData.data[idx + 3] = 255;
   plot.ctx.putImageData(plot.imageData, 0, 0);
 }
@@ -59,6 +80,9 @@ ws.addEventListener("message", (event) => {
     gridY = msg.grid_y;
     plotsEl.innerHTML = "";
     (msg.thresholds || []).forEach(createPlot);
+    document.querySelectorAll(".grid-overlay").forEach((el) => {
+      el.style.setProperty("--grid-size", `${100 / gridX}%`);
+    });
     return;
   }
 

@@ -9,8 +9,8 @@ import (
 	"stxm-map-go/internal/types"
 )
 
-func Stream(ctx context.Context, gridX, gridY int, acqRate float64) <-chan types.Frame {
-	out := make(chan types.Frame)
+func Stream(ctx context.Context, gridX, gridY int, acqRate float64) <-chan types.RawMessage {
+	out := make(chan types.RawMessage)
 	go func() {
 		defer close(out)
 
@@ -36,6 +36,14 @@ func Stream(ctx context.Context, gridX, gridY int, acqRate float64) <-chan types
 
 		values := make([]uint32, totalPixels)
 		imageID := 0
+		scanID := 0
+
+		out <- types.RawMessage{
+			Type: "start",
+			Meta: map[string]any{
+				"scan_id": scanID,
+			},
+		}
 
 		for {
 			select {
@@ -53,20 +61,51 @@ func Stream(ctx context.Context, gridX, gridY int, acqRate float64) <-chan types
 					}
 				}
 
-				value := values[imageID]
-				frame := types.Frame{
+				image0 := make([][]uint16, gridY)
+				image1 := make([][]uint16, gridY)
+				for y := 0; y < gridY; y++ {
+					row0 := make([]uint16, gridX)
+					row1 := make([]uint16, gridX)
+					for x := 0; x < gridX; x++ {
+						idx := y*gridX + x
+						val := uint16(values[idx])
+						row0[x] = val
+						row1[x] = uint16(float64(val) * 0.7)
+					}
+					image0[y] = row0
+					image1[y] = row1
+				}
+
+				frame := types.RawFrame{
 					ImageID:   imageID,
 					StartTime: float64(time.Now().UnixNano()) / 1e9,
-					Data: map[string]uint32{
-						"threshold_0": value,
-						"threshold_1": uint32(float64(value) * 0.7),
+					Data: map[string]any{
+						"threshold_0": image0,
+						"threshold_1": image1,
 					},
 				}
-				out <- frame
+				out <- types.RawMessage{
+					Type:  "image",
+					Image: frame,
+				}
 
-				imageID++
-				if imageID >= totalPixels {
+				if imageID == totalPixels-1 {
+					out <- types.RawMessage{
+						Type: "end",
+						Meta: map[string]any{
+							"frames": totalPixels,
+						},
+					}
+					scanID++
+					out <- types.RawMessage{
+						Type: "start",
+						Meta: map[string]any{
+							"scan_id": scanID,
+						},
+					}
 					imageID = 0
+				} else {
+					imageID++
 				}
 			}
 		}

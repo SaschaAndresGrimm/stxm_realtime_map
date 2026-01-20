@@ -1,6 +1,7 @@
 package output
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -46,4 +47,21 @@ func WriteSeries(
 		_ = f.Close()
 	}
 	return nil
+}
+
+func WriteMetadata(outputDir, runTimestamp, kind string, meta map[string]any) error {
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+		return err
+	}
+
+	filename := filepath.Join(outputDir, fmt.Sprintf("%s_%s_data.txt", runTimestamp, kind))
+	f, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	encoder := json.NewEncoder(f)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(meta)
 }

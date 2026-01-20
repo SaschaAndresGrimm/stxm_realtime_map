@@ -3,6 +3,7 @@ package config
 type AppConfig struct {
 	Port          int
 	Endpoint      string
+	Workers       int
 	GridX         int
 	GridY         int
 	Debug         bool

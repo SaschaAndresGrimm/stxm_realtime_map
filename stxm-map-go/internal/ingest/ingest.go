@@ -15,18 +15,18 @@ import (
 // Stream returns a channel of frames from a real detector.
 // Expects CBOR messages shaped like the Python pipeline:
 // { "type": "image", "image_id": <int>, "start_time": <float>, "data": { "threshold_0": <int>, ... } }
-func Stream(ctx context.Context, endpoint string) (<-chan types.Frame, error) {
+func Stream(ctx context.Context, endpoint string) (<-chan types.RawMessage, error) {
 	return streamWithConfig(ctx, endpoint, 1)
 }
 
-func StreamWithLogEvery(ctx context.Context, endpoint string, logEvery int) (<-chan types.Frame, error) {
+func StreamWithLogEvery(ctx context.Context, endpoint string, logEvery int) (<-chan types.RawMessage, error) {
 	if logEvery < 1 {
 		logEvery = 1
 	}
 	return streamWithConfig(ctx, endpoint, logEvery)
 }
 
-func streamWithConfig(ctx context.Context, endpoint string, logEvery int) (<-chan types.Frame, error) {
+func streamWithConfig(ctx context.Context, endpoint string, logEvery int) (<-chan types.RawMessage, error) {
 	socket, err := zmq4.NewSocket(zmq4.PULL)
 	if err != nil {
 		return nil, err
@@ -36,7 +36,7 @@ func streamWithConfig(ctx context.Context, endpoint string, logEvery int) (<-cha
 		return nil, err
 	}
 
-	out := make(chan types.Frame, 128)
+	out := make(chan types.RawMessage, 128)
 	go func() {
 		defer close(out)
 		defer socket.Close()
@@ -54,7 +54,7 @@ func streamWithConfig(ctx context.Context, endpoint string, logEvery int) (<-cha
 				continue
 			}
 
-			frame, ok := decodeFrame(msg, logEvery)
+			message, ok := decodeMessage(msg, logEvery)
 			if !ok {
 				logEveryN(logEvery, "ingest decode skipped message")
 				continue
@@ -63,7 +63,7 @@ func streamWithConfig(ctx context.Context, endpoint string, logEvery int) (<-cha
 			select {
 			case <-ctx.Done():
 				return
-			case out <- frame:
+			case out <- message:
 			}
 		}
 	}()
@@ -71,54 +71,51 @@ func streamWithConfig(ctx context.Context, endpoint string, logEvery int) (<-cha
 	return out, nil
 }
 
-func decodeFrame(msg []byte, logEvery int) (types.Frame, bool) {
+func decodeMessage(msg []byte, logEvery int) (types.RawMessage, bool) {
 	var payload map[string]any
 	if err := cbor.Unmarshal(msg, &payload); err != nil {
 		logEveryN(logEvery, "ingest CBOR decode error: %v", err)
-		return types.Frame{}, false
+		return types.RawMessage{}, false
 	}
 
 	msgType, _ := payload["type"].(string)
-	if msgType != "image" {
-		logEveryN(logEvery, "ingest ignoring message type %q", msgType)
-		return types.Frame{}, false
+	if msgType == "" {
+		logEveryN(logEvery, "ingest missing message type")
+		return types.RawMessage{}, false
 	}
 
-	imageID, err := toInt(payload["image_id"])
-	if err != nil {
-		logEveryN(logEvery, "ingest invalid image_id: %v", err)
-		return types.Frame{}, false
-	}
-	startTime, err := toFloat(payload["start_time"])
-	if err != nil {
-		logEveryN(logEvery, "ingest invalid start_time: %v", err)
-		return types.Frame{}, false
+	if msgType != "image" {
+		meta, _ := payload["data"].(map[string]any)
+		return types.RawMessage{
+			Type: msgType,
+			Meta: meta,
+		}, true
 	}
 
 	dataRaw, ok := payload["data"].(map[string]any)
 	if !ok {
 		logEveryN(logEvery, "ingest invalid data field")
-		return types.Frame{}, false
+		return types.RawMessage{}, false
 	}
 
-	data := make(map[string]uint32, len(dataRaw))
-	for key, value := range dataRaw {
-		count, err := toUint32(value)
-		if err != nil {
-			logEveryN(logEvery, "ingest invalid threshold %q: %v", key, err)
-			continue
-		}
-		data[key] = count
+	imageID, err := toInt(payload["image_id"])
+	if err != nil {
+		logEveryN(logEvery, "ingest invalid image_id: %v", err)
+		return types.RawMessage{}, false
 	}
-	if len(data) == 0 {
-		logEveryN(logEvery, "ingest message had no usable thresholds")
-		return types.Frame{}, false
+	startTime, err := toFloat(payload["start_time"])
+	if err != nil {
+		logEveryN(logEvery, "ingest invalid start_time: %v", err)
+		return types.RawMessage{}, false
 	}
 
-	return types.Frame{
-		ImageID:   imageID,
-		StartTime: startTime,
-		Data:      data,
+	return types.RawMessage{
+		Type: "image",
+		Image: types.RawFrame{
+			ImageID:   imageID,
+			StartTime: startTime,
+			Data:      dataRaw,
+		},
 	}, true
 }
 
@@ -154,6 +151,7 @@ func toFloat(v any) (float64, error) {
 	}
 }
 
+// toUint32 kept for future typed-array helpers.
 func toUint32(v any) (uint32, error) {
 	switch n := v.(type) {
 	case uint32:
