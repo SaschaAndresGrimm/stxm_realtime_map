@@ -8,6 +8,8 @@ const zoomOutBtn = document.getElementById("zoom-out");
 const zoomResetBtn = document.getElementById("zoom-reset");
 const zoomSlider = document.getElementById("zoom-slider");
 const syncViewsToggle = document.getElementById("sync-views");
+const controlPanel = document.getElementById("control-panel");
+const panelHandle = document.getElementById("panel-handle");
 
 let gridX = 0;
 let gridY = 0;
@@ -329,6 +331,33 @@ window.addEventListener("keydown", (event) => {
   } else if (event.key === "0") {
     setGlobalZoom(1);
   }
+});
+
+let resizing = false;
+let startX = 0;
+let startWidth = 0;
+
+panelHandle?.addEventListener("click", () => {
+  controlPanel?.classList.toggle("panel-open");
+});
+
+panelHandle?.addEventListener("mousedown", (event) => {
+  event.preventDefault();
+  resizing = true;
+  startX = event.clientX;
+  startWidth = controlPanel ? controlPanel.getBoundingClientRect().width : 260;
+  controlPanel?.classList.add("panel-open");
+});
+
+window.addEventListener("mousemove", (event) => {
+  if (!resizing || !controlPanel) return;
+  const delta = startX - event.clientX;
+  const nextWidth = Math.min(420, Math.max(200, startWidth + delta));
+  controlPanel.style.width = `${nextWidth}px`;
+});
+
+window.addEventListener("mouseup", () => {
+  resizing = false;
 });
 
 syncViewsToggle?.addEventListener("change", () => {

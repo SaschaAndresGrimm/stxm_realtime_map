@@ -9,7 +9,17 @@
   <body>
     <header>
       <h1>STXM Real-time Map</h1>
-      <div class="header-controls">
+      <div class="header-status">
+        <div id="fps">0 fps</div>
+        <div id="status">Connecting…</div>
+      </div>
+    </header>
+    <aside id="control-panel" class="panel">
+      <div id="panel-handle" class="panel-handle" title="Drag to resize"></div>
+      <div class="panel-header">
+        <h2>Controls</h2>
+      </div>
+      <div class="panel-section">
         <label class="toggle">
           <input type="checkbox" id="autoscale" checked />
           <span>Auto scale</span>
@@ -18,6 +28,8 @@
           <input type="checkbox" id="sync-views" checked />
           <span>Sync views</span>
         </label>
+      </div>
+      <div class="panel-section">
         <div class="zoom-controls">
           <button id="zoom-out" class="export-btn">-</button>
           <span id="zoom-level">1.0x</span>
@@ -25,10 +37,8 @@
         </div>
         <input id="zoom-slider" type="range" min="0.5" max="8" step="0.1" value="1" />
         <button id="zoom-reset" class="export-btn">Reset</button>
-        <div id="fps">0 fps</div>
-        <div id="status">Connecting…</div>
       </div>
-    </header>
+    </aside>
     <main>
       <div id="plots"></div>
     </main>
