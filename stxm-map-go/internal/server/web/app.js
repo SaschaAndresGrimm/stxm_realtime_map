@@ -38,6 +38,7 @@ let manualMax = 255;
 let histogramThreshold = "";
 let histogramDirty = false;
 let histogramDrag = null;
+let minZoom = 0.5;
 
 updateContrastControls();
 updatePanelPadding();
@@ -57,7 +58,7 @@ function createPlot(threshold) {
   title.textContent = threshold;
   const exportBtn = document.createElement("button");
   exportBtn.className = "export-btn export-icon";
-  exportBtn.textContent = "PNG";
+  exportBtn.innerHTML = "<span class=\"icon\">⬇︎</span><span>PNG</span>";
   exportBtn.title = "Export PNG";
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
@@ -84,6 +85,7 @@ function createPlot(threshold) {
   const xSums = new Float64Array(gridX);
   const ySums = new Float64Array(gridY);
   const rowCounts = new Uint32Array(gridY);
+  const wrapSize = { width: 0, height: 0 };
   const projectionDirty = { value: false };
 
   const plotBody = document.createElement("div");
@@ -226,6 +228,7 @@ function createPlot(threshold) {
     xProjectionCtx,
     yProjection,
     yProjectionCtx,
+    wrapSize,
     basePixel,
     zoom,
     canvasWrap,
@@ -323,6 +326,10 @@ ws.addEventListener("message", (event) => {
     plots.forEach((plot) => {
       const rect = plot.canvasWrap.getBoundingClientRect();
       plot.basePixel.value = Math.max(6, Math.floor(rect.width / gridX));
+      plot.wrapSize.width = rect.width;
+      plot.wrapSize.height = rect.height;
+      plot.canvasWrap.style.width = "";
+      plot.canvasWrap.style.height = "";
       updatePlotScale(plot);
     });
     scheduleHistogramUpdate();
@@ -349,6 +356,14 @@ ws.addEventListener("message", (event) => {
 });
 
 function updatePlotScale(plot) {
+  const minForPlot = computeMinZoom(plot);
+  if (syncViewsToggle?.checked) {
+    if (globalZoom < minForPlot) {
+      globalZoom = minForPlot;
+    }
+  } else if (plot.zoom.value < minForPlot) {
+    plot.zoom.value = minForPlot;
+  }
   const pixelSize = plot.basePixel.value * (syncViewsToggle?.checked ? globalZoom : plot.zoom.value);
   const widthPx = gridX * pixelSize;
   const heightPx = gridY * pixelSize;
@@ -358,13 +373,29 @@ function updatePlotScale(plot) {
   plot.canvas.style.height = `${heightPx}px`;
   plot.canvasInner.style.width = `${widthPx}px`;
   plot.canvasInner.style.height = `${heightPx}px`;
+  if (plot.canvasInner) {
+    plot.canvasInner.style.width = `${widthPx}px`;
+    plot.canvasInner.style.height = `${heightPx}px`;
+  }
   plot.gridOverlay.style.backgroundSize = `${pixelSize}px ${pixelSize}px`;
+  const wrapWidth = plot.canvasWrap.clientWidth;
+  if (wrapWidth) {
+    plot.canvasWrap.style.height = `${wrapWidth}px`;
+  }
+  plot.wrapSize.width = plot.canvasWrap.clientWidth;
+  plot.wrapSize.height = plot.canvasWrap.clientHeight;
+  if (plot.xProjection) {
+    const targetWidth = plot.wrapSize.width || plot.canvasWrap.clientWidth || widthPx;
+    plot.xProjection.style.width = `${targetWidth}px`;
+  }
+  updateZoomBounds();
   updatePixelLabels(plot);
   scheduleProjectionUpdate(plot);
 }
 
 function setGlobalZoom(value) {
-  globalZoom = value;
+  const minAllowed = getMinZoomForPlots();
+  globalZoom = Math.max(minAllowed, value);
   plots.forEach((plot) => updatePlotScale(plot));
   if (zoomLevelEl) {
     zoomLevelEl.textContent = `${globalZoom.toFixed(1)}x`;
@@ -375,7 +406,8 @@ function setGlobalZoom(value) {
 }
 
 function setPlotZoom(plot, value) {
-  plot.zoom.value = value;
+  const minAllowed = computeMinZoom(plot);
+  plot.zoom.value = Math.max(minAllowed, value);
   updatePlotScale(plot);
 }
 
@@ -384,17 +416,17 @@ zoomInBtn?.addEventListener("click", () => {
 });
 
 zoomOutBtn?.addEventListener("click", () => {
-  setGlobalZoom(Math.min(8, Math.max(0.5, globalZoom * 0.8)));
+  setGlobalZoom(Math.min(8, Math.max(minZoom, globalZoom * 0.8)));
 });
 
 zoomResetBtn?.addEventListener("click", () => {
-  setGlobalZoom(1);
+  setGlobalZoom(Math.max(1, minZoom));
 });
 
 zoomSlider?.addEventListener("input", (event) => {
   const value = parseFloat(event.target.value);
   if (Number.isFinite(value)) {
-    setGlobalZoom(Math.min(8, Math.max(0.5, value)));
+    setGlobalZoom(Math.min(8, Math.max(minZoom, value)));
   }
 });
 
@@ -402,9 +434,9 @@ window.addEventListener("keydown", (event) => {
   if (event.key === "+" || event.key === "=") {
     setGlobalZoom(Math.min(8, Math.max(0.5, globalZoom * 1.25)));
   } else if (event.key === "-" || event.key === "_") {
-    setGlobalZoom(Math.min(8, Math.max(0.5, globalZoom * 0.8)));
+    setGlobalZoom(Math.min(8, Math.max(minZoom, globalZoom * 0.8)));
   } else if (event.key === "0") {
-    setGlobalZoom(1);
+    setGlobalZoom(Math.max(1, minZoom));
   }
 });
 
@@ -1205,5 +1237,36 @@ function updatePixelLabels(plot) {
     cell.className = "pixel-label";
     cell.textContent = plot.values[i];
     plot.pixelLabels.appendChild(cell);
+  }
+}
+
+function computeMinZoom(plot) {
+  const wrapWidth = plot.canvasWrap.clientWidth || 1;
+  const wrapHeight = plot.canvasWrap.clientHeight || 1;
+  const basePixel = Math.max(1, plot.basePixel.value);
+  const minZoomX = wrapWidth / (gridX * basePixel);
+  const minZoomY = wrapHeight / (gridY * basePixel);
+  return Math.max(0.5, Math.max(minZoomX, minZoomY));
+}
+
+function getMinZoomForPlots() {
+  let minAllowed = 0.5;
+  plots.forEach((plot) => {
+    const candidate = computeMinZoom(plot);
+    if (candidate > minAllowed) {
+      minAllowed = candidate;
+    }
+  });
+  return minAllowed;
+}
+
+function updateZoomBounds() {
+  minZoom = getMinZoomForPlots();
+  if (zoomSlider) {
+    zoomSlider.min = minZoom.toFixed(2);
+  }
+  if (zoomLevelEl) {
+    const current = syncViewsToggle?.checked ? globalZoom : globalZoom;
+    zoomLevelEl.textContent = `${Math.max(minZoom, current).toFixed(1)}x`;
   }
 }
