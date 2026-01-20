@@ -35,10 +35,12 @@ let manualMin = 0;
 let manualMax = 255;
 let histogramThreshold = "";
 let histogramDirty = false;
+let histogramDrag = null;
 
 updateContrastControls();
 updatePanelPadding();
 startStatusPolling();
+attachHistogramInteractions();
 
 function createPlot(threshold) {
   const container = document.createElement("div");
@@ -532,11 +534,88 @@ function scheduleHistogramUpdate() {
   });
 }
 
+function attachHistogramInteractions() {
+  if (!histogramCanvas) {
+    return;
+  }
+  histogramCanvas.addEventListener("pointerdown", (event) => {
+    const plot = getHistogramPlot();
+    if (!plot) return;
+    const { minVal, maxVal } = histogramRange(plot);
+    const rect = histogramCanvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const t = Math.min(1, Math.max(0, x / rect.width));
+    const value = minVal + t * (maxVal - minVal);
+    const leftVal = autoscaleToggle.checked ? minVal : manualMin;
+    const rightVal = autoscaleToggle.checked ? maxVal : manualMax;
+    const distMin = Math.abs(value - leftVal);
+    const distMax = Math.abs(value - rightVal);
+    histogramDrag = distMin <= distMax ? "min" : "max";
+    histogramCanvas.setPointerCapture(event.pointerId);
+    applyHistogramValue(plot, histogramDrag, value);
+  });
+
+  histogramCanvas.addEventListener("pointermove", (event) => {
+    if (!histogramDrag) return;
+    const plot = getHistogramPlot();
+    if (!plot) return;
+    const { minVal, maxVal } = histogramRange(plot);
+    const rect = histogramCanvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const t = Math.min(1, Math.max(0, x / rect.width));
+    const value = minVal + t * (maxVal - minVal);
+    applyHistogramValue(plot, histogramDrag, value);
+  });
+
+  histogramCanvas.addEventListener("pointerup", (event) => {
+    if (histogramDrag) {
+      histogramCanvas.releasePointerCapture(event.pointerId);
+    }
+    histogramDrag = null;
+  });
+
+  histogramCanvas.addEventListener("pointerleave", () => {
+    histogramDrag = null;
+  });
+}
+
+function getHistogramPlot() {
+  return plots.get(histogramThreshold) || plots.values().next().value;
+}
+
+function histogramRange(plot) {
+  const minVal = plot.minValue.value;
+  const maxVal = plot.maxValue.value;
+  const span = Math.max(1, maxVal - minVal);
+  return { minVal, maxVal, span };
+}
+
+function applyHistogramValue(plot, handle, value) {
+  if (!autoscaleToggle.checked) {
+    // keep manual values
+  } else {
+    autoscaleToggle.checked = false;
+    updateContrastControls();
+  }
+  const rounded = Math.round(value);
+  if (handle === "min") {
+    manualMin = Math.min(rounded, manualMax - 1);
+  } else {
+    manualMax = Math.max(rounded, manualMin + 1);
+  }
+  if (contrastMin) contrastMin.value = `${manualMin}`;
+  if (contrastMax) contrastMax.value = `${manualMax}`;
+  if (contrastMinValue) contrastMinValue.textContent = `${manualMin}`;
+  if (contrastMaxValue) contrastMaxValue.textContent = `${manualMax}`;
+  plots.forEach((p) => redrawPlot(p));
+  scheduleHistogramUpdate();
+}
+
 function renderHistogram() {
   if (!histogramCanvas || !histogramCtx) {
     return;
   }
-  const plot = plots.get(histogramThreshold) || plots.values().next().value;
+  const plot = getHistogramPlot();
   if (!plot) {
     histogramCtx.clearRect(0, 0, histogramCanvas.width, histogramCanvas.height);
     return;
@@ -575,6 +654,39 @@ function renderHistogram() {
     histogramCtx.fillStyle = `rgb(${r}, ${g}, ${b})`;
     histogramCtx.fillRect(i * barWidth, height - h, Math.max(1, barWidth - 1), h);
   }
+
+  const rangeMin = plot.minValue.value;
+  const rangeMax = plot.maxValue.value;
+  const rangeSpan = Math.max(1, rangeMax - rangeMin);
+  const leftVal = autoscaleToggle.checked ? rangeMin : manualMin;
+  const rightVal = autoscaleToggle.checked ? rangeMax : manualMax;
+  const leftT = (leftVal - rangeMin) / rangeSpan;
+  const rightT = (rightVal - rangeMin) / rangeSpan;
+  const leftX = Math.min(width, Math.max(0, leftT * width));
+  const rightX = Math.min(width, Math.max(0, rightT * width));
+
+  histogramCtx.strokeStyle = "rgba(245,245,245,0.9)";
+  histogramCtx.lineWidth = 2;
+  histogramCtx.beginPath();
+  histogramCtx.moveTo(leftX, 0);
+  histogramCtx.lineTo(leftX, height);
+  histogramCtx.moveTo(rightX, 0);
+  histogramCtx.lineTo(rightX, height);
+  histogramCtx.stroke();
+
+  histogramCtx.fillStyle = "rgba(245,245,245,0.9)";
+  histogramCtx.beginPath();
+  histogramCtx.moveTo(leftX - 5, 0);
+  histogramCtx.lineTo(leftX + 5, 0);
+  histogramCtx.lineTo(leftX, 8);
+  histogramCtx.closePath();
+  histogramCtx.fill();
+  histogramCtx.beginPath();
+  histogramCtx.moveTo(rightX - 5, 0);
+  histogramCtx.lineTo(rightX + 5, 0);
+  histogramCtx.lineTo(rightX, 8);
+  histogramCtx.closePath();
+  histogramCtx.fill();
 }
 
 function scheduleProjectionUpdate(plot) {
@@ -769,12 +881,14 @@ function drawProjectionScaleY(ctx, width, height, minValue, maxValue) {
   ctx.moveTo(right, bottom);
   ctx.lineTo(right, bottom - 6);
   ctx.stroke();
+  const minVal = Math.min(minValue, maxValue);
+  const maxVal = Math.max(minValue, maxValue);
   ctx.font = "10px sans-serif";
   ctx.textAlign = "left";
   ctx.textBaseline = "bottom";
-  ctx.fillText(`${minValue.toFixed(1)}`, left, bottom - 8);
+  ctx.fillText(`${minVal.toFixed(1)}`, left, bottom - 8);
   ctx.textAlign = "right";
-  ctx.fillText(`${maxValue.toFixed(1)}`, right, bottom - 8);
+  ctx.fillText(`${maxVal.toFixed(1)}`, right, bottom - 8);
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
   ctx.fillText("log", left, top);
