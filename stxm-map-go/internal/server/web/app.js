@@ -23,6 +23,7 @@ const detectorStatusEl = document.getElementById("status-detector");
 const streamStatusEl = document.getElementById("status-stream");
 const filewriterStatusEl = document.getElementById("status-filewriter");
 const monitorStatusEl = document.getElementById("status-monitor");
+const accentColor = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#0f766e";
 
 let gridX = 0;
 let gridY = 0;
@@ -55,8 +56,9 @@ function createPlot(threshold) {
   const title = document.createElement("h2");
   title.textContent = threshold;
   const exportBtn = document.createElement("button");
-  exportBtn.className = "export-btn";
-  exportBtn.textContent = "Export PNG";
+  exportBtn.className = "export-btn export-icon";
+  exportBtn.textContent = "PNG";
+  exportBtn.title = "Export PNG";
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
   const canvasWrap = document.createElement("div");
@@ -911,7 +913,7 @@ function renderProjections(plot) {
   xCtx.lineTo(xPad + xPlotWidth, xHeight - 4);
   xCtx.lineTo(xPad, xHeight - 4);
   xCtx.closePath();
-  xCtx.fillStyle = "rgba(30,30,30,0.08)";
+  xCtx.fillStyle = hexToRgba(accentColor, 0.15);
   xCtx.fill();
   xCtx.beginPath();
   for (let x = 0; x < gridX; x++) {
@@ -925,7 +927,7 @@ function renderProjections(plot) {
       xCtx.lineTo(px, py);
     }
   }
-  xCtx.strokeStyle = "rgba(30,30,30,0.85)";
+  xCtx.strokeStyle = hexToRgba(accentColor, 0.9);
   xCtx.lineWidth = 1.6;
   xCtx.stroke();
 
@@ -946,7 +948,7 @@ function renderProjections(plot) {
   yCtx.lineTo(yPad, yPad + yPlotHeight);
   yCtx.lineTo(yPad, yPad);
   yCtx.closePath();
-  yCtx.fillStyle = "rgba(30,30,30,0.08)";
+  yCtx.fillStyle = hexToRgba(accentColor, 0.15);
   yCtx.fill();
   yCtx.beginPath();
   for (let y = 0; y < gridY; y++) {
@@ -960,7 +962,7 @@ function renderProjections(plot) {
       yCtx.lineTo(px, py);
     }
   }
-  yCtx.strokeStyle = "rgba(30,30,30,0.85)";
+  yCtx.strokeStyle = hexToRgba(accentColor, 0.9);
   yCtx.lineWidth = 1.6;
   yCtx.stroke();
 
@@ -970,8 +972,8 @@ function renderProjections(plot) {
 
 function drawProjectionScaleX(ctx, width, height, minValue, maxValue) {
   ctx.save();
-  ctx.strokeStyle = "rgba(30,30,30,0.6)";
-  ctx.fillStyle = "rgba(30,30,30,0.8)";
+  ctx.strokeStyle = "rgba(60,60,60,0.6)";
+  ctx.fillStyle = "rgba(60,60,60,0.8)";
   ctx.lineWidth = 1;
   const left = 4;
   const right = width - 4;
@@ -1001,8 +1003,8 @@ function drawProjectionScaleX(ctx, width, height, minValue, maxValue) {
 
 function drawProjectionScaleY(ctx, width, height, minValue, maxValue) {
   ctx.save();
-  ctx.strokeStyle = "rgba(30,30,30,0.6)";
-  ctx.fillStyle = "rgba(30,30,30,0.8)";
+  ctx.strokeStyle = "rgba(60,60,60,0.6)";
+  ctx.fillStyle = "rgba(60,60,60,0.8)";
   ctx.lineWidth = 1;
   const left = 4;
   const right = width - 4;
@@ -1048,6 +1050,17 @@ function startStatusPolling() {
       setStatus(streamStatusEl, "error");
     }
   }, 1000);
+}
+
+function hexToRgba(color, alpha) {
+  const hex = color.replace("#", "");
+  if (hex.length !== 6) {
+    return `rgba(15,118,110,${alpha})`;
+  }
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
 }
 
 function setStatus(el, value) {

@@ -1,19 +1,38 @@
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap");
+
+:root {
+  --bg: #f7f5f0;
+  --bg-soft: #efe9e2;
+  --surface: #ffffff;
+  --panel: #fdfbf7;
+  --ink: #151515;
+  --muted: #6b6b6b;
+  --border: #ded7cf;
+  --border-strong: #cfc6bc;
+  --accent: #0f766e;
+  --accent-soft: #d9f2ee;
+  --shadow: 0 12px 24px rgba(25, 15, 5, 0.08);
+  --radius: 10px;
+  --control-height: 32px;
+  --control-radius: 10px;
+}
+
 * {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-  color: #1b1b1b;
-  background: #f5f5f0;
+  font-family: "Space Grotesk", "Helvetica Neue", Arial, sans-serif;
+  color: var(--ink);
+  background: radial-gradient(circle at top right, #fff7e6 0%, var(--bg) 45%, var(--bg-soft) 100%);
   transition: padding-right 0.2s ease;
   min-height: 100vh;
 }
 
 header {
-  padding: 16px 24px;
-  background: #111;
+  padding: 14px 24px;
+  background: #141516;
   color: #f5f5f0;
   display: flex;
   justify-content: space-between;
@@ -21,9 +40,9 @@ header {
 }
 
 h1 {
-  font-size: 18px;
+  font-size: 16px;
   margin: 0;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
 }
 
@@ -36,23 +55,23 @@ h1 {
 }
 
 #status {
-  opacity: 0.7;
+  opacity: 0.8;
 }
 
 main {
   padding: 16px 24px;
-  padding-bottom: 56px;
+  padding-bottom: 48px;
 }
 
 .footer-status {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
-  padding: 10px 24px;
-  background: #111;
+  padding: 6px 24px;
+  background: #141516;
   color: #f5f5f0;
-  font-size: 12px;
+  font-size: 11px;
   position: fixed;
   left: 0;
   right: 0;
@@ -70,10 +89,10 @@ body.panel-opened {
   right: 0;
   width: var(--panel-width, 260px);
   height: 100vh;
-  background: #fafafa;
-  border-left: 1px solid #ddd;
-  padding: 16px;
-  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.12);
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  padding: 18px 18px;
+  box-shadow: -8px 0 28px rgba(20, 10, 5, 0.12);
   transform: translateX(100%);
   transition: transform 0.2s ease;
   z-index: 20;
@@ -90,9 +109,9 @@ body.panel-opened {
   transform: translateY(-50%);
   width: 18px;
   height: 80px;
-  background: #111;
+  background: #141516;
   color: #f5f5f0;
-  border-radius: 8px 0 0 8px;
+  border-radius: 10px 0 0 10px;
   cursor: ew-resize;
   display: flex;
   align-items: center;
@@ -115,23 +134,25 @@ body.panel-opened {
 }
 
 .panel-section {
-  margin-bottom: 16px;
+  margin-bottom: 14px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 #plots {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 16px;
+  gap: 18px;
 }
 
 .plot {
-  background: #fff;
-  border: 1px solid #ddd;
-  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 14px;
   position: relative;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
 }
 
 .plot-body {
@@ -142,15 +163,16 @@ body.panel-opened {
 
 .plot h2 {
   font-size: 14px;
-  margin: 0 0 8px 0;
+  margin: 0 0 10px 0;
 }
 
 .canvas-wrap {
   position: relative;
   overflow: auto;
-  border: 1px solid #eee;
-  background: #111;
+  border: 1px solid var(--border);
+  background: #141516;
   flex: 1;
+  border-radius: 8px;
 }
 
 .canvas-inner {
@@ -164,7 +186,8 @@ canvas {
 
 .projection {
   background: transparent;
-  border: 1px solid #ddd;
+  border: 1px solid var(--border);
+  border-radius: 8px;
 }
 
 .projection-row {
@@ -192,14 +215,15 @@ canvas {
   height: 10px;
   margin-top: 8px;
   background: linear-gradient(90deg, #0000ff, #ffb400, #ff0000);
-  border: 1px solid #ddd;
+  border: 1px solid var(--border);
+  border-radius: 6px;
 }
 
 .colorbar-labels {
   display: flex;
   justify-content: space-between;
   font-size: 11px;
-  color: #666;
+  color: var(--muted);
   margin-top: 4px;
 }
 
@@ -208,30 +232,49 @@ canvas {
   inset: 0;
   pointer-events: none;
   background-image:
-    linear-gradient(to right, rgba(255,255,255,0.12) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255,255,255,0.12) 1px, transparent 1px);
+    linear-gradient(to right, rgba(255,255,255,0.08) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255,255,255,0.08) 1px, transparent 1px);
   mix-blend-mode: screen;
-  opacity: 0.5;
+  opacity: 0.4;
 }
 
 .plot-controls {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 
 .export-btn {
   font-size: 11px;
-  border: 1px solid #ccc;
-  background: #fff;
-  padding: 2px 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  padding: 4px 8px;
   cursor: pointer;
+  border-radius: var(--control-radius);
+  font-family: inherit;
+  color: var(--ink);
+  height: var(--control-height);
 }
 
 .export-wide {
   width: 100%;
-  padding: 6px 8px;
+  padding: 8px 10px;
+  font-weight: 600;
+  background: var(--accent-soft);
+  border-color: rgba(15, 118, 110, 0.35);
+}
+
+.export-btn:focus-visible,
+select:focus-visible,
+input[type="range"]:focus-visible {
+  outline: 2px solid rgba(15, 118, 110, 0.4);
+  outline-offset: 2px;
+}
+
+.export-icon {
+  min-width: 44px;
+  padding: 0 10px;
   font-weight: 600;
 }
 
@@ -267,12 +310,23 @@ canvas {
 .toggle {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
 }
 
 select {
   font-size: 12px;
-  padding: 2px 6px;
+  padding: 4px 8px;
+  border-radius: var(--control-radius);
+  border: 1px solid var(--border-strong);
+  font-family: inherit;
+  height: var(--control-height);
+  margin-left: auto;
+}
+
+.toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
 }
 
 .contrast-controls {
@@ -284,17 +338,17 @@ select {
 .histogram {
   display: grid;
   gap: 6px;
-  padding: 8px;
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.12);
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  padding: 10px;
+  border-radius: var(--radius);
+  background: #f1ece6;
+  border: 1px solid var(--border);
 }
 
 .histogram-title {
   font-size: 11px;
   letter-spacing: 0.02em;
   text-transform: uppercase;
-  color: #2a2a2a;
+  color: var(--muted);
 }
 
 .histogram-axis {
@@ -310,7 +364,7 @@ select {
 
 .histogram-y-label {
   font-size: 10px;
-  color: #333;
+  color: var(--muted);
   writing-mode: vertical-rl;
   transform: rotate(180deg);
   text-align: center;
@@ -322,7 +376,7 @@ select {
   left: 50%;
   transform: translateX(-50%);
   font-size: 10px;
-  color: #333;
+  color: var(--muted);
 }
 
 #histogram-canvas {
@@ -349,6 +403,11 @@ select {
   width: 100%;
 }
 
+input[type="range"] {
+  accent-color: var(--accent);
+  height: 4px;
+}
+
 .status-row {
   display: flex;
   align-items: center;
@@ -358,7 +417,7 @@ select {
 
 .status-label {
   color: #f5f5f0;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0.02em;
 }
 
@@ -366,9 +425,9 @@ select {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 2px 6px;
-  border-radius: 10px;
-  background: #f0f0f0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
   font-size: 11px;
 }
 
@@ -378,8 +437,8 @@ select {
 }
 
 .status-dot {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: #888;
 }
