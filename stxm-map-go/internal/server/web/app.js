@@ -2,12 +2,16 @@ const statusEl = document.getElementById("status");
 const plotsEl = document.getElementById("plots");
 const fpsEl = document.getElementById("fps");
 const autoscaleToggle = document.getElementById("autoscale");
+const zoomLevelEl = document.getElementById("zoom-level");
+const zoomInBtn = document.getElementById("zoom-in");
+const zoomOutBtn = document.getElementById("zoom-out");
 
 let gridX = 0;
 let gridY = 0;
 const plots = new Map();
 let lastFrameTime = performance.now();
 let frameCount = 0;
+let globalZoom = 1;
 
 function createPlot(threshold) {
   const container = document.createElement("div");
@@ -21,6 +25,10 @@ function createPlot(threshold) {
   exportBtn.textContent = "Export PNG";
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
+  const canvasWrap = document.createElement("div");
+  canvasWrap.className = "canvas-wrap";
+  const canvasInner = document.createElement("div");
+  canvasInner.className = "canvas-inner";
   const gridOverlay = document.createElement("div");
   gridOverlay.className = "grid-overlay";
   const tooltip = document.createElement("div");
@@ -33,13 +41,16 @@ function createPlot(threshold) {
   const maxValue = { value: 1 };
   const minValue = { value: 0 };
   const values = new Uint32Array(gridX * gridY);
+  const basePixel = { value: 12 };
 
   controls.appendChild(title);
   controls.appendChild(exportBtn);
   container.appendChild(controls);
-  container.appendChild(canvas);
-  container.appendChild(gridOverlay);
-  container.appendChild(tooltip);
+  canvasInner.appendChild(canvas);
+  canvasInner.appendChild(gridOverlay);
+  canvasWrap.appendChild(canvasInner);
+  canvasWrap.appendChild(tooltip);
+  container.appendChild(canvasWrap);
 
   const colorbar = document.createElement("div");
   colorbar.className = "colorbar";
@@ -62,10 +73,13 @@ function createPlot(threshold) {
     link.click();
   });
 
-  canvas.addEventListener("mousemove", (event) => {
-    const rect = canvas.getBoundingClientRect();
-    const x = Math.floor(((event.clientX - rect.left) / rect.width) * gridX);
-    const y = Math.floor(((event.clientY - rect.top) / rect.height) * gridY);
+  canvasWrap.addEventListener("mousemove", (event) => {
+    const rect = canvasWrap.getBoundingClientRect();
+    const pixelSize = basePixel.value * globalZoom;
+    const xPx = event.clientX - rect.left + canvasWrap.scrollLeft;
+    const yPx = event.clientY - rect.top + canvasWrap.scrollTop;
+    const x = Math.floor(xPx / pixelSize);
+    const y = Math.floor(yPx / pixelSize);
     if (x < 0 || y < 0 || x >= gridX || y >= gridY) {
       tooltip.style.display = "none";
       return;
@@ -77,8 +91,49 @@ function createPlot(threshold) {
     tooltip.style.top = `${event.clientY - rect.top}px`;
   });
 
-  canvas.addEventListener("mouseleave", () => {
+  canvasWrap.addEventListener("mouseleave", () => {
     tooltip.style.display = "none";
+  });
+
+  canvasWrap.addEventListener("wheel", (event) => {
+    event.preventDefault();
+    const delta = event.deltaY > 0 ? -0.1 : 0.1;
+    setGlobalZoom(Math.min(8, Math.max(0.5, globalZoom + delta)));
+  }, { passive: false });
+
+  let dragging = false;
+  let dragStartX = 0;
+  let dragStartY = 0;
+  let startScrollLeft = 0;
+  let startScrollTop = 0;
+
+  canvasWrap.addEventListener("mousedown", (event) => {
+    if (event.button !== 0) return;
+    dragging = true;
+    dragStartX = event.clientX;
+    dragStartY = event.clientY;
+    startScrollLeft = canvasWrap.scrollLeft;
+    startScrollTop = canvasWrap.scrollTop;
+    canvasWrap.style.cursor = "grabbing";
+  });
+
+  window.addEventListener("mouseup", () => {
+    dragging = false;
+    canvasWrap.style.cursor = "default";
+  });
+
+  window.addEventListener("mousemove", (event) => {
+    if (!dragging) return;
+    const dx = event.clientX - dragStartX;
+    const dy = event.clientY - dragStartY;
+    canvasWrap.scrollLeft = startScrollLeft - dx;
+    canvasWrap.scrollTop = startScrollTop - dy;
+  });
+
+  canvasWrap.addEventListener("dblclick", (event) => {
+    event.preventDefault();
+    const factor = event.shiftKey ? 0.8 : 1.25;
+    setGlobalZoom(Math.min(8, Math.max(0.5, globalZoom * factor)));
   });
 
   plots.set(threshold, {
@@ -90,6 +145,10 @@ function createPlot(threshold) {
     minLabel,
     maxLabel,
     values,
+    basePixel,
+    canvasWrap,
+    canvasInner,
+    gridOverlay,
   });
 }
 
@@ -153,8 +212,10 @@ ws.addEventListener("message", (event) => {
     gridY = msg.grid_y;
     plotsEl.innerHTML = "";
     (msg.thresholds || []).forEach(createPlot);
-    document.querySelectorAll(".grid-overlay").forEach((el) => {
-      el.style.setProperty("--grid-size", `${100 / gridX}%`);
+    plots.forEach((plot) => {
+      const rect = plot.canvasWrap.getBoundingClientRect();
+      plot.basePixel.value = Math.max(6, Math.floor(rect.width / gridX));
+      updatePlotScale(plot);
     });
     return;
   }
@@ -173,4 +234,33 @@ ws.addEventListener("message", (event) => {
     frameCount = 0;
     lastFrameTime = now;
   }
+});
+
+function updatePlotScale(plot) {
+  const pixelSize = plot.basePixel.value * globalZoom;
+  const widthPx = gridX * pixelSize;
+  const heightPx = gridY * pixelSize;
+  plot.canvas.width = gridX;
+  plot.canvas.height = gridY;
+  plot.canvas.style.width = `${widthPx}px`;
+  plot.canvas.style.height = `${heightPx}px`;
+  plot.canvasInner.style.width = `${widthPx}px`;
+  plot.canvasInner.style.height = `${heightPx}px`;
+  plot.gridOverlay.style.backgroundSize = `${pixelSize}px ${pixelSize}px`;
+}
+
+function setGlobalZoom(value) {
+  globalZoom = value;
+  plots.forEach((plot) => updatePlotScale(plot));
+  if (zoomLevelEl) {
+    zoomLevelEl.textContent = `${globalZoom.toFixed(1)}x`;
+  }
+}
+
+zoomInBtn?.addEventListener("click", () => {
+  setGlobalZoom(Math.min(8, Math.max(0.5, globalZoom * 1.25)));
+});
+
+zoomOutBtn?.addEventListener("click", () => {
+  setGlobalZoom(Math.min(8, Math.max(0.5, globalZoom * 0.8)));
 });
