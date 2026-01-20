@@ -23,6 +23,9 @@ const detectorStatusEl = document.getElementById("status-detector");
 const streamStatusEl = document.getElementById("status-stream");
 const filewriterStatusEl = document.getElementById("status-filewriter");
 const monitorStatusEl = document.getElementById("status-monitor");
+const footerEl = document.querySelector(".footer-status");
+const headerEl = document.querySelector("header");
+const plotsContainer = document.getElementById("plots");
 const accentColor = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#0f766e";
 
 let gridX = 0;
@@ -44,6 +47,9 @@ updateContrastControls();
 updatePanelPadding();
 startStatusPolling();
 attachHistogramInteractions();
+updateFooterPadding();
+scheduleLayoutRefresh();
+setupLayoutObserver();
 
 exportSnapshotBtn?.addEventListener("click", () => {
   exportSnapshot();
@@ -64,6 +70,8 @@ function createPlot(threshold) {
   const ctx = canvas.getContext("2d");
   const canvasWrap = document.createElement("div");
   canvasWrap.className = "canvas-wrap";
+  const colorbarWrap = document.createElement("div");
+  colorbarWrap.className = "colorbar-stack";
   const canvasInner = document.createElement("div");
   canvasInner.className = "canvas-inner";
   const gridOverlay = document.createElement("div");
@@ -98,6 +106,8 @@ function createPlot(threshold) {
   const xProjectionCtx = xProjection.getContext("2d");
   const projectionRow = document.createElement("div");
   projectionRow.className = "projection-row";
+  const projectionSpacerLeft = document.createElement("div");
+  projectionSpacerLeft.className = "projection-spacer-left";
   const projectionSpacer = document.createElement("div");
   projectionSpacer.className = "projection-spacer";
 
@@ -109,26 +119,27 @@ function createPlot(threshold) {
   canvasInner.appendChild(pixelLabels);
   canvasWrap.appendChild(canvasInner);
   canvasWrap.appendChild(tooltip);
+  plotBody.appendChild(colorbarWrap);
   plotBody.appendChild(canvasWrap);
   plotBody.appendChild(yProjection);
   container.appendChild(plotBody);
   projectionRow.appendChild(xProjection);
   projectionRow.appendChild(projectionSpacer);
+  projectionRow.insertBefore(projectionSpacerLeft, xProjection);
   container.appendChild(projectionRow);
 
   const colorbar = document.createElement("div");
   colorbar.className = "colorbar";
-  colorbar.style.background = gradientFromScheme(currentScheme);
-  const labels = document.createElement("div");
-  labels.className = "colorbar-labels";
+  colorbar.style.background = gradientFromScheme(currentScheme, true);
   const minLabel = document.createElement("span");
+  minLabel.className = "colorbar-label";
   minLabel.textContent = "0";
   const maxLabel = document.createElement("span");
+  maxLabel.className = "colorbar-label";
   maxLabel.textContent = "0";
-  labels.appendChild(minLabel);
-  labels.appendChild(maxLabel);
-  container.appendChild(colorbar);
-  container.appendChild(labels);
+  colorbarWrap.appendChild(colorbar);
+  colorbarWrap.insertBefore(maxLabel, colorbar);
+  colorbarWrap.appendChild(minLabel);
   plotsEl.appendChild(container);
 
   exportBtn.addEventListener("click", () => {
@@ -228,6 +239,14 @@ function createPlot(threshold) {
     xProjectionCtx,
     yProjection,
     yProjectionCtx,
+    container,
+    controls,
+    plotBody,
+    projectionRow,
+    labelTop: maxLabel,
+    labelBottom: minLabel,
+    colorbarWrap,
+    projectionSpacerLeft,
     wrapSize,
     basePixel,
     zoom,
@@ -333,6 +352,7 @@ ws.addEventListener("message", (event) => {
       updatePlotScale(plot);
     });
     scheduleHistogramUpdate();
+    scheduleLayoutRefresh();
     return;
   }
 
@@ -356,6 +376,24 @@ ws.addEventListener("message", (event) => {
 });
 
 function updatePlotScale(plot) {
+  const wrapWidth = plot.canvasWrap.clientWidth;
+  if (wrapWidth && plot.container) {
+    const computed = getComputedStyle(plot.container);
+    const paddingY = parseFloat(computed.paddingTop) + parseFloat(computed.paddingBottom);
+    const gap = parseFloat(computed.rowGap || computed.gap || 0);
+    const controlsHeight = plot.controls?.offsetHeight || 0;
+    const projectionHeight = plot.projectionRow?.offsetHeight || 0;
+    const gaps = gap * 2;
+    const available = Math.max(
+      120,
+      plot.container.clientHeight - paddingY - controlsHeight - projectionHeight - gaps
+    );
+    const targetHeight = Math.min(wrapWidth, available);
+    plot.plotBody.style.height = `${targetHeight}px`;
+    plot.canvasWrap.style.height = `${targetHeight}px`;
+    plot.basePixel.value = Math.max(6, Math.floor(targetHeight / gridX));
+  }
+
   const minForPlot = computeMinZoom(plot);
   if (syncViewsToggle?.checked) {
     if (globalZoom < minForPlot) {
@@ -378,15 +416,18 @@ function updatePlotScale(plot) {
     plot.canvasInner.style.height = `${heightPx}px`;
   }
   plot.gridOverlay.style.backgroundSize = `${pixelSize}px ${pixelSize}px`;
-  const wrapWidth = plot.canvasWrap.clientWidth;
-  if (wrapWidth) {
-    plot.canvasWrap.style.height = `${wrapWidth}px`;
-  }
   plot.wrapSize.width = plot.canvasWrap.clientWidth;
   plot.wrapSize.height = plot.canvasWrap.clientHeight;
   if (plot.xProjection) {
     const targetWidth = plot.wrapSize.width || plot.canvasWrap.clientWidth || widthPx;
     plot.xProjection.style.width = `${targetWidth}px`;
+  }
+  if (plot.projectionSpacerLeft && plot.colorbarWrap) {
+    plot.projectionSpacerLeft.style.width = `${plot.colorbarWrap.offsetWidth}px`;
+  }
+  if (plot.colorbar && plot.colorbarWrap) {
+    plot.colorbar.style.height = `${plot.canvasWrap.clientHeight}px`;
+    plot.colorbarWrap.style.height = `${plot.canvasWrap.clientHeight}px`;
   }
   updateZoomBounds();
   updatePixelLabels(plot);
@@ -491,6 +532,7 @@ window.addEventListener("mouseup", () => {
 window.addEventListener("resize", () => {
   scheduleHistogramUpdate();
   plots.forEach((plot) => scheduleProjectionUpdate(plot));
+  updateFooterPadding();
 });
 
 function updatePanelPadding() {
@@ -547,7 +589,7 @@ function redrawPlot(plot) {
   }
   plot.ctx.putImageData(plot.imageData, 0, 0);
   if (plot.colorbar) {
-    plot.colorbar.style.background = gradientFromScheme(currentScheme);
+    plot.colorbar.style.background = gradientFromScheme(currentScheme, true);
   }
   updatePixelLabels(plot);
   scheduleHistogramUpdate();
@@ -903,18 +945,19 @@ function renderProjections(plot) {
   yCtx.clearRect(0, 0, yWidth, yHeight);
   yCtx.clearRect(0, 0, yWidth, yHeight);
 
+  const visible = getVisibleRange(plot);
   let maxX = 0;
   let minX = Number.POSITIVE_INFINITY;
-  for (let i = 0; i < plot.xSums.length; i++) {
-    const mean = plot.xSums[i] / Math.max(1, gridY);
+  for (let i = visible.xStart; i <= visible.xEnd; i++) {
+    const mean = plot.xSums[i] / Math.max(1, visible.yCount);
     if (mean > maxX) maxX = mean;
     if (mean < minX) minX = mean;
   }
   if (!Number.isFinite(minX)) minX = 0;
   let maxY = 0;
   let minY = Number.POSITIVE_INFINITY;
-  for (let i = 0; i < plot.ySums.length; i++) {
-    const mean = plot.ySums[i] / Math.max(1, plot.rowCounts[i]);
+  for (let i = visible.yStart; i <= visible.yEnd; i++) {
+    const mean = plot.ySums[i] / Math.max(1, visible.xCount);
     if (mean > maxY) maxY = mean;
     if (mean < minY) minY = mean;
   }
@@ -932,11 +975,12 @@ function renderProjections(plot) {
   const xPlotWidth = Math.max(1, xWidth - xPad * 2);
   xCtx.beginPath();
   for (let x = 0; x < gridX; x++) {
-    const value = plot.xSums[x] / Math.max(1, gridY);
+    if (x < visible.xStart || x > visible.xEnd) continue;
+    const value = plot.xSums[x] / Math.max(1, visible.yCount);
     const h = (scaleCount(value, minX, maxX) / scaledMaxX) * (xHeight - 8);
-    const px = xPad + (x / Math.max(1, gridX - 1)) * xPlotWidth;
+    const px = xPad + ((x - visible.xStart) / Math.max(1, visible.xCount - 1)) * xPlotWidth;
     const py = xHeight - 4 - h;
-    if (x === 0) {
+    if (x === visible.xStart) {
       xCtx.moveTo(px, py);
     } else {
       xCtx.lineTo(px, py);
@@ -949,11 +993,12 @@ function renderProjections(plot) {
   xCtx.fill();
   xCtx.beginPath();
   for (let x = 0; x < gridX; x++) {
-    const value = plot.xSums[x] / Math.max(1, gridY);
+    if (x < visible.xStart || x > visible.xEnd) continue;
+    const value = plot.xSums[x] / Math.max(1, visible.yCount);
     const h = (scaleCount(value, minX, maxX) / scaledMaxX) * (xHeight - 8);
-    const px = xPad + (x / Math.max(1, gridX - 1)) * xPlotWidth;
+    const px = xPad + ((x - visible.xStart) / Math.max(1, visible.xCount - 1)) * xPlotWidth;
     const py = xHeight - 4 - h;
-    if (x === 0) {
+    if (x === visible.xStart) {
       xCtx.moveTo(px, py);
     } else {
       xCtx.lineTo(px, py);
@@ -967,11 +1012,12 @@ function renderProjections(plot) {
   const yPlotHeight = Math.max(1, yHeight - yPad * 2);
   yCtx.beginPath();
   for (let y = 0; y < gridY; y++) {
-    const value = plot.ySums[y] / Math.max(1, plot.rowCounts[y]);
+    if (y < visible.yStart || y > visible.yEnd) continue;
+    const value = plot.ySums[y] / Math.max(1, visible.xCount);
     const w = (scaleCount(value, minY, maxY) / scaledMaxY) * (yWidth - 8);
     const px = yPad + w;
-    const py = yPad + (y / Math.max(1, gridY - 1)) * yPlotHeight;
-    if (y === 0) {
+    const py = yPad + ((y - visible.yStart) / Math.max(1, visible.yCount - 1)) * yPlotHeight;
+    if (y === visible.yStart) {
       yCtx.moveTo(px, py);
     } else {
       yCtx.lineTo(px, py);
@@ -984,11 +1030,12 @@ function renderProjections(plot) {
   yCtx.fill();
   yCtx.beginPath();
   for (let y = 0; y < gridY; y++) {
-    const value = plot.ySums[y] / Math.max(1, plot.rowCounts[y]);
+    if (y < visible.yStart || y > visible.yEnd) continue;
+    const value = plot.ySums[y] / Math.max(1, visible.xCount);
     const w = (scaleCount(value, minY, maxY) / scaledMaxY) * (yWidth - 8);
     const px = yPad + w;
-    const py = yPad + (y / Math.max(1, gridY - 1)) * yPlotHeight;
-    if (y === 0) {
+    const py = yPad + ((y - visible.yStart) / Math.max(1, visible.yCount - 1)) * yPlotHeight;
+    if (y === visible.yStart) {
       yCtx.moveTo(px, py);
     } else {
       yCtx.lineTo(px, py);
@@ -1000,6 +1047,24 @@ function renderProjections(plot) {
 
   drawProjectionScaleX(xCtx, xWidth, xHeight, minX, maxX);
   drawProjectionScaleY(yCtx, yWidth, yHeight, minY, maxY);
+}
+
+function getVisibleRange(plot) {
+  const pixelSize = plot.basePixel.value * (syncViewsToggle?.checked ? globalZoom : plot.zoom.value);
+  const startX = Math.max(0, Math.floor(plot.canvasWrap.scrollLeft / pixelSize));
+  const startY = Math.max(0, Math.floor(plot.canvasWrap.scrollTop / pixelSize));
+  const countX = Math.max(1, Math.ceil(plot.canvasWrap.clientWidth / pixelSize));
+  const countY = Math.max(1, Math.ceil(plot.canvasWrap.clientHeight / pixelSize));
+  const endX = Math.min(gridX - 1, startX + countX - 1);
+  const endY = Math.min(gridY - 1, startY + countY - 1);
+  return {
+    xStart: startX,
+    xEnd: endX,
+    yStart: startY,
+    yEnd: endY,
+    xCount: endX - startX + 1,
+    yCount: endY - startY + 1,
+  };
 }
 
 function drawProjectionScaleX(ctx, width, height, minValue, maxValue) {
@@ -1176,20 +1241,21 @@ function colorFromScheme(t, scheme) {
   return [r, g, b];
 }
 
-function gradientFromScheme(scheme) {
+function gradientFromScheme(scheme, vertical = false) {
+  const angle = vertical ? "180deg" : "90deg";
   if (scheme === "gray") {
-    return "linear-gradient(90deg, #000, #fff)";
+    return `linear-gradient(${angle}, #000, #fff)`;
   }
   if (scheme === "heat") {
-    return "linear-gradient(90deg, #220000, #ffb400, #ff0000)";
+    return `linear-gradient(${angle}, #220000, #ffb400, #ff0000)`;
   }
   if (scheme === "viridis") {
-    return "linear-gradient(90deg, #440154, #31688e, #35b779, #fde725)";
+    return `linear-gradient(${angle}, #440154, #31688e, #35b779, #fde725)`;
   }
   if (scheme === "albula-hdr") {
-    return "linear-gradient(90deg, #001a33, #0b3c6f, #3f8fd2, #ffd54a, #ff5a3d)";
+    return `linear-gradient(${angle}, #001a33, #0b3c6f, #3f8fd2, #ffd54a, #ff5a3d)`;
   }
-  return "linear-gradient(90deg, #0000ff, #ffb400, #ff0000)";
+  return `linear-gradient(${angle}, #0000ff, #ffb400, #ff0000)`;
 }
 
 syncViewsToggle?.addEventListener("change", () => {
@@ -1268,5 +1334,50 @@ function updateZoomBounds() {
   if (zoomLevelEl) {
     const current = syncViewsToggle?.checked ? globalZoom : globalZoom;
     zoomLevelEl.textContent = `${Math.max(minZoom, current).toFixed(1)}x`;
+  }
+}
+
+function updateFooterPadding() {
+  if (!footerEl) return;
+  const height = Math.ceil(footerEl.getBoundingClientRect().height);
+  document.documentElement.style.setProperty("--footer-height", `${height}px`);
+}
+
+function updateHeaderPadding() {
+  if (!headerEl) return;
+  const height = Math.ceil(headerEl.getBoundingClientRect().height);
+  document.documentElement.style.setProperty("--header-height", `${height}px`);
+}
+
+function scheduleLayoutRefresh() {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      plots.forEach((plot) => updatePlotScale(plot));
+      updateFooterPadding();
+      updateHeaderPadding();
+    });
+  });
+  setTimeout(() => {
+    plots.forEach((plot) => updatePlotScale(plot));
+    updateFooterPadding();
+    updateHeaderPadding();
+  }, 50);
+}
+
+function setupLayoutObserver() {
+  if (!plotsContainer || !window.ResizeObserver) {
+    return;
+  }
+  const observer = new ResizeObserver(() => {
+    plots.forEach((plot) => updatePlotScale(plot));
+    updateFooterPadding();
+    updateHeaderPadding();
+  });
+  observer.observe(plotsContainer);
+  if (footerEl) {
+    observer.observe(footerEl);
+  }
+  if (headerEl) {
+    observer.observe(headerEl);
   }
 }

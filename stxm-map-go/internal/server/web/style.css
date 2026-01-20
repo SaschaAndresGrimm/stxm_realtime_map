@@ -60,7 +60,9 @@ h1 {
 
 main {
   padding: 16px 24px;
-  padding-bottom: 48px;
+  padding-bottom: 16px;
+  height: calc(100vh - var(--footer-height, 56px) - var(--header-height, 56px));
+  overflow: hidden;
 }
 
 .footer-status {
@@ -77,6 +79,7 @@ main {
   right: 0;
   bottom: 0;
   z-index: 5;
+  height: var(--footer-height, 56px);
 }
 
 body.panel-opened {
@@ -144,6 +147,10 @@ body.panel-opened {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 18px;
+  height: 100%;
+  align-items: stretch;
+  grid-auto-rows: minmax(0, 1fr);
+  padding-bottom: 12px;
 }
 
 .plot {
@@ -153,12 +160,18 @@ body.panel-opened {
   position: relative;
   border-radius: var(--radius);
   box-shadow: var(--shadow);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
 }
 
 .plot-body {
   display: flex;
   gap: 8px;
   align-items: stretch;
+  flex: 1;
 }
 
 .plot h2 {
@@ -170,13 +183,16 @@ body.panel-opened {
   position: relative;
   overflow: auto;
   border: 1px solid var(--border);
-  background: #141516;
+  background: var(--surface);
   flex: 1;
   border-radius: 8px;
 }
 
 .canvas-inner {
   position: relative;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
 }
 
 canvas {
@@ -194,12 +210,18 @@ canvas {
   display: flex;
   gap: 8px;
   align-items: stretch;
+  margin-top: 4px;
+}
+
+.projection-spacer-left {
+  width: 0;
+  flex: 0 0 auto;
 }
 
 .projection-x {
-  flex: 1;
+  flex: 0 0 auto;
   height: 60px;
-  margin-top: 8px;
+  margin-top: 0;
 }
 
 .projection-y {
@@ -212,19 +234,27 @@ canvas {
 }
 
 .colorbar {
-  height: 10px;
-  margin-top: 8px;
-  background: linear-gradient(90deg, #0000ff, #ffb400, #ff0000);
+  width: 12px;
+  flex: 1;
+  background: linear-gradient(180deg, #0000ff, #ffb400, #ff0000);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px;
 }
 
-.colorbar-labels {
-  display: flex;
-  justify-content: space-between;
-  font-size: 11px;
+.colorbar-label {
+  font-size: 10px;
   color: var(--muted);
-  margin-top: 4px;
+  text-align: center;
+}
+
+.colorbar-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  height: 100%;
+  justify-content: space-between;
 }
 
 .grid-overlay {
@@ -276,6 +306,14 @@ input[type="range"]:focus-visible {
   min-width: 44px;
   padding: 0 10px;
   font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.export-icon .icon {
+  font-size: 12px;
+  line-height: 1;
 }
 
 .tooltip {
