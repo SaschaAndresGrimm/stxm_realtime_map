@@ -43,3 +43,11 @@ that data type (mirrors the Python `processFrame` behavior).
 
 - `GET /healthz` returns `ok`
 - `GET /config` returns JSON configuration for grid/thresholds
+
+## CBOR Decode Harness
+
+Inspect Stream V2 CBOR dumps without full decompression:
+
+```bash
+go run ./cmd/stxm-decode -path internal/simulator/cbor_testdata -limit 3
+```
