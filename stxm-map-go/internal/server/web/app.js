@@ -20,6 +20,7 @@ function createPlot(threshold) {
 
   const imageData = ctx.createImageData(gridX, gridY);
   const maxValue = { value: 1 };
+  const minValue = { value: 0 };
 
   container.appendChild(title);
   container.appendChild(canvas);
@@ -39,21 +40,31 @@ function createPlot(threshold) {
   container.appendChild(labels);
   plotsEl.appendChild(container);
 
-  plots.set(threshold, { canvas, ctx, imageData, maxValue, minLabel, maxLabel });
+  plots.set(threshold, { canvas, ctx, imageData, maxValue, minValue, minLabel, maxLabel });
 }
 
 function updatePixel(threshold, imageId, value) {
   const plot = plots.get(threshold);
   if (!plot) return;
 
+  if (plot.maxValue.value === 1 && plot.minValue.value === 0) {
+    plot.minValue.value = value;
+    plot.maxValue.value = value;
+  }
   if (value > plot.maxValue.value) {
     plot.maxValue.value = value;
-    plot.maxLabel.textContent = `${plot.maxValue.value}`;
   }
+  if (value < plot.minValue.value) {
+    plot.minValue.value = value;
+  }
+  plot.minLabel.textContent = `${plot.minValue.value}`;
+  plot.maxLabel.textContent = `${plot.maxValue.value}`;
   const x = imageId % gridX;
   const y = Math.floor(imageId / gridX);
   const idx = (y * gridX + x) * 4;
-  const intensity = Math.min(255, Math.floor((value / plot.maxValue.value) * 255));
+  const denom = Math.max(1, plot.maxValue.value - plot.minValue.value);
+  const norm = (value - plot.minValue.value) / denom;
+  const intensity = Math.min(255, Math.floor(norm * 255));
   const t = intensity / 255;
   const r = Math.floor(255 * t);
   const g = Math.floor(180 * t);
