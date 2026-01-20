@@ -7,6 +7,7 @@ const zoomInBtn = document.getElementById("zoom-in");
 const zoomOutBtn = document.getElementById("zoom-out");
 const zoomResetBtn = document.getElementById("zoom-reset");
 const zoomSlider = document.getElementById("zoom-slider");
+const syncViewsToggle = document.getElementById("sync-views");
 
 let gridX = 0;
 let gridY = 0;
@@ -47,6 +48,7 @@ function createPlot(threshold) {
   const minValue = { value: 0 };
   const values = new Uint32Array(gridX * gridY);
   const basePixel = { value: 12 };
+  const zoom = { value: 1 };
 
   controls.appendChild(title);
   controls.appendChild(exportBtn);
@@ -81,7 +83,7 @@ function createPlot(threshold) {
 
   canvasWrap.addEventListener("mousemove", (event) => {
     const rect = canvasWrap.getBoundingClientRect();
-    const pixelSize = basePixel.value * globalZoom;
+    const pixelSize = basePixel.value * (syncViewsToggle?.checked ? globalZoom : zoom.value);
     const xPx = event.clientX - rect.left + canvasWrap.scrollLeft;
     const yPx = event.clientY - rect.top + canvasWrap.scrollTop;
     const x = Math.floor(xPx / pixelSize);
@@ -104,7 +106,12 @@ function createPlot(threshold) {
   canvasWrap.addEventListener("wheel", (event) => {
     event.preventDefault();
     const delta = event.deltaY > 0 ? -0.1 : 0.1;
-    setGlobalZoom(Math.min(8, Math.max(0.5, globalZoom + delta)));
+    const nextZoom = Math.min(8, Math.max(0.5, (syncViewsToggle?.checked ? globalZoom : zoom.value) + delta));
+    if (syncViewsToggle?.checked) {
+      setGlobalZoom(nextZoom);
+    } else {
+      setPlotZoom({ zoom, canvas, canvasInner, gridOverlay, basePixel, canvasWrap }, nextZoom);
+    }
   }, { passive: false });
 
   let dragging = false;
@@ -139,7 +146,12 @@ function createPlot(threshold) {
   canvasWrap.addEventListener("dblclick", (event) => {
     event.preventDefault();
     const factor = event.shiftKey ? 0.8 : 1.25;
-    setGlobalZoom(Math.min(8, Math.max(0.5, globalZoom * factor)));
+    const nextZoom = Math.min(8, Math.max(0.5, (syncViewsToggle?.checked ? globalZoom : zoom.value) * factor));
+    if (syncViewsToggle?.checked) {
+      setGlobalZoom(nextZoom);
+    } else {
+      setPlotZoom({ zoom, canvas, canvasInner, gridOverlay, basePixel, canvasWrap }, nextZoom);
+    }
   });
 
   plots.set(threshold, {
@@ -152,10 +164,25 @@ function createPlot(threshold) {
     maxLabel,
     values,
     basePixel,
+    zoom,
     canvasWrap,
     canvasInner,
     gridOverlay,
     pixelLabels,
+  });
+
+  canvasWrap.addEventListener("scroll", () => {
+    if (!syncViewsToggle?.checked) {
+      return;
+    }
+    const left = canvasWrap.scrollLeft;
+    const top = canvasWrap.scrollTop;
+    plots.forEach((other) => {
+      if (other.canvasWrap !== canvasWrap) {
+        other.canvasWrap.scrollLeft = left;
+        other.canvasWrap.scrollTop = top;
+      }
+    });
   });
 }
 
@@ -246,7 +273,7 @@ ws.addEventListener("message", (event) => {
 });
 
 function updatePlotScale(plot) {
-  const pixelSize = plot.basePixel.value * globalZoom;
+  const pixelSize = plot.basePixel.value * (syncViewsToggle?.checked ? globalZoom : plot.zoom.value);
   const widthPx = gridX * pixelSize;
   const heightPx = gridY * pixelSize;
   plot.canvas.width = gridX;
@@ -268,6 +295,11 @@ function setGlobalZoom(value) {
   if (zoomSlider) {
     zoomSlider.value = globalZoom.toFixed(1);
   }
+}
+
+function setPlotZoom(plot, value) {
+  plot.zoom.value = value;
+  updatePlotScale(plot);
 }
 
 zoomInBtn?.addEventListener("click", () => {
@@ -299,8 +331,38 @@ window.addEventListener("keydown", (event) => {
   }
 });
 
+syncViewsToggle?.addEventListener("change", () => {
+  if (syncViewsToggle.checked) {
+    setGlobalZoom(globalZoom);
+    const first = plots.values().next().value;
+    if (first) {
+      plots.forEach((plot) => {
+        plot.canvasWrap.scrollLeft = first.canvasWrap.scrollLeft;
+        plot.canvasWrap.scrollTop = first.canvasWrap.scrollTop;
+      });
+    }
+    if (zoomInBtn) zoomInBtn.disabled = false;
+    if (zoomOutBtn) zoomOutBtn.disabled = false;
+    if (zoomResetBtn) zoomResetBtn.disabled = false;
+    if (zoomSlider) {
+      zoomSlider.disabled = false;
+    }
+  } else {
+    plots.forEach((plot) => {
+      plot.zoom.value = globalZoom;
+      updatePlotScale(plot);
+    });
+    if (zoomInBtn) zoomInBtn.disabled = true;
+    if (zoomOutBtn) zoomOutBtn.disabled = true;
+    if (zoomResetBtn) zoomResetBtn.disabled = true;
+    if (zoomSlider) {
+      zoomSlider.disabled = true;
+    }
+  }
+});
+
 function updatePixelLabels(plot) {
-  const pixelSize = plot.basePixel.value * globalZoom;
+  const pixelSize = plot.basePixel.value * (syncViewsToggle?.checked ? globalZoom : plot.zoom.value);
   if (pixelSize < labelMinPixels) {
     plot.pixelLabels.style.display = "none";
     return;
