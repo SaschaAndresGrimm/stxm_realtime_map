@@ -55,6 +55,9 @@ that data type (mirrors the Python `processFrame` behavior).
   - `ingest_decode_failures_total`
   - `ws_clients`
 
+`/status` also includes `last_ingest` (RFC3339 timestamp) for quick staleness checks.
+The service logs a periodic ingest summary every 30s.
+
 ## CBOR Decode Harness
 
 Inspect Stream V2 CBOR dumps without full decompression:

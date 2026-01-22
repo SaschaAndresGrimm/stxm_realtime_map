@@ -118,12 +118,13 @@ func main() {
 	var statusMu sync.Mutex
 	var metrics metrics
 	status := map[string]any{
-		"detector":   "unknown",
-		"stream":     "idle",
-		"filewriter": "idle",
-		"monitor":    "ok",
-		"last_frame": "",
-		"last_write": "",
+		"detector":    "unknown",
+		"stream":      "idle",
+		"filewriter":  "idle",
+		"monitor":     "ok",
+		"last_frame":  "",
+		"last_write":  "",
+		"last_ingest": "",
 	}
 
 	if cfg.Workers < 1 {
@@ -155,6 +156,9 @@ func main() {
 		defer close(incoming)
 		for msg := range rawMessages {
 			metrics.rawMessages.Add(1)
+			statusMu.Lock()
+			status["last_ingest"] = time.Now().Format(time.RFC3339)
+			statusMu.Unlock()
 			if msg.Type != "image" {
 				metrics.metaMessages.Add(1)
 				runMu.Lock()
@@ -272,6 +276,25 @@ func main() {
 					status["stream"] = "idle"
 				}
 				statusMu.Unlock()
+			}
+		}
+	}()
+
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				snapshot := metrics.snapshot()
+				log.Printf("ingest stats: raw=%v image=%v meta=%v decode_failures=%v",
+					snapshot["raw_messages_total"],
+					snapshot["image_messages_total"],
+					snapshot["meta_messages_total"],
+					ingest.DecodeFailures(),
+				)
 			}
 		}
 	}()
