@@ -1,6 +1,7 @@
 const statusEl = document.getElementById("status");
 const plotsEl = document.getElementById("plots");
 const fpsEl = document.getElementById("fps");
+const recvRateEl = document.getElementById("recv-rate");
 const autoscaleToggle = document.getElementById("autoscale");
 const zoomLevelEl = document.getElementById("zoom-level");
 const zoomInBtn = document.getElementById("zoom-in");
@@ -33,6 +34,8 @@ let gridY = 0;
 const plots = new Map();
 let lastFrameTime = performance.now();
 let frameCount = 0;
+let lastRecvCount = null;
+let lastRecvTime = 0;
 let globalZoom = 1;
 const labelMinPixels = 20;
 let currentScheme = "blue-yellow-red";
@@ -436,7 +439,7 @@ ws.addEventListener("message", (event) => {
     const now = performance.now();
     if (now - lastFrameTime >= 1000) {
       const fps = Math.round((frameCount * 1000) / (now - lastFrameTime));
-      fpsEl.textContent = `${fps} fps`;
+      fpsEl.textContent = `UI ${fps} Hz`;
       frameCount = 0;
       lastFrameTime = now;
     }
@@ -456,7 +459,7 @@ ws.addEventListener("message", (event) => {
   const now = performance.now();
   if (now - lastFrameTime >= 1000) {
     const fps = Math.round((frameCount * 1000) / (now - lastFrameTime));
-    fpsEl.textContent = `${fps} fps`;
+    fpsEl.textContent = `UI ${fps} Hz`;
     frameCount = 0;
     lastFrameTime = now;
   }
@@ -587,32 +590,45 @@ histogramLogToggle?.addEventListener("change", () => {
 let resizing = false;
 let startX = 0;
 let startWidth = 0;
+let moved = false;
 
-panelHandle?.addEventListener("click", () => {
-  controlPanel?.classList.toggle("panel-open");
-  updatePanelPadding();
-});
-
-panelHandle?.addEventListener("mousedown", (event) => {
+panelHandle?.addEventListener("pointerdown", (event) => {
   event.preventDefault();
+  moved = false;
   resizing = true;
   startX = event.clientX;
   startWidth = controlPanel ? controlPanel.getBoundingClientRect().width : 260;
-  controlPanel?.classList.add("panel-open");
-  updatePanelPadding();
+  panelHandle.setPointerCapture?.(event.pointerId);
 });
 
-window.addEventListener("mousemove", (event) => {
+window.addEventListener("pointermove", (event) => {
   if (!resizing || !controlPanel) return;
   const delta = startX - event.clientX;
+  if (Math.abs(delta) > 6) {
+    moved = true;
+  }
   const nextWidth = Math.min(420, Math.max(200, startWidth + delta));
   controlPanel.style.width = `${nextWidth}px`;
+  controlPanel.classList.add("panel-open");
   document.body.style.setProperty("--panel-width", `${nextWidth}px`);
+  updatePanelPadding();
   scheduleHistogramUpdate();
   plots.forEach((plot) => scheduleProjectionUpdate(plot));
 });
 
-window.addEventListener("mouseup", () => {
+window.addEventListener("pointerup", (event) => {
+  if (!resizing) return;
+  panelHandle?.releasePointerCapture?.(event.pointerId);
+  if (!moved) {
+    controlPanel?.classList.toggle("panel-open");
+    updatePanelPadding();
+  }
+  resizing = false;
+});
+
+window.addEventListener("pointercancel", (event) => {
+  if (!resizing) return;
+  panelHandle?.releasePointerCapture?.(event.pointerId);
   resizing = false;
 });
 
@@ -1230,6 +1246,24 @@ function startStatusPolling() {
       setStatus(streamStatusEl, data.stream);
       setStatus(filewriterStatusEl, data.filewriter);
       setStatus(monitorStatusEl, data.monitor);
+
+      const metrics = data.metrics || {};
+      const recvTotal = metrics.image_messages_total ?? metrics.raw_messages_total;
+      if (typeof recvTotal === "number") {
+        const now = performance.now();
+        if (lastRecvCount != null && lastRecvTime > 0) {
+          const delta = recvTotal - lastRecvCount;
+          const elapsed = (now - lastRecvTime) / 1000;
+          if (elapsed > 0 && recvRateEl) {
+            const rate = Math.max(0, Math.round(delta / elapsed));
+            recvRateEl.textContent = `RX ${rate} Hz`;
+          }
+        } else if (recvRateEl) {
+          recvRateEl.textContent = "RX 0 Hz";
+        }
+        lastRecvCount = recvTotal;
+        lastRecvTime = now;
+      }
     } catch (err) {
       setStatus(streamStatusEl, "error");
     }

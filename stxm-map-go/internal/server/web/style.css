@@ -119,6 +119,7 @@ body.panel-opened {
   display: flex;
   align-items: center;
   justify-content: center;
+  touch-action: none;
 }
 
 .panel-handle::before {
