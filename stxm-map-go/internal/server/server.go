@@ -20,18 +20,20 @@ var webFS embed.FS
 
 type Server struct {
 	upgrader websocket.Upgrader
-	clients  map[*websocket.Conn]struct{}
+	clients  map[*websocket.Conn]*sync.Mutex
 	mu       sync.Mutex
 	cfg      config.AppConfig
+	statusFn func() map[string]any
 }
 
-func Run(ctx context.Context, cfg config.AppConfig, frames <-chan types.Frame) error {
+func Run(ctx context.Context, cfg config.AppConfig, frames <-chan types.Frame, statusFn func() map[string]any) error {
 	srv := &Server{
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool { return true },
 		},
-		clients: make(map[*websocket.Conn]struct{}),
-		cfg:     cfg,
+		clients:  make(map[*websocket.Conn]*sync.Mutex),
+		cfg:      cfg,
+		statusFn: statusFn,
 	}
 
 	sub, err := fs.Sub(webFS, "web")
@@ -43,6 +45,7 @@ func Run(ctx context.Context, cfg config.AppConfig, frames <-chan types.Frame) e
 	mux.HandleFunc("/ws", srv.handleWS)
 	mux.HandleFunc("/healthz", srv.handleHealth)
 	mux.HandleFunc("/config", srv.handleConfig)
+	mux.HandleFunc("/status", srv.handleStatus)
 
 	httpServer := &http.Server{
 		Addr:              ":" + itoa(cfg.Port),
@@ -67,10 +70,11 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.mu.Lock()
-	s.clients[conn] = struct{}{}
+	writeMu := &sync.Mutex{}
+	s.clients[conn] = writeMu
 	s.mu.Unlock()
 
-	_ = conn.WriteJSON(map[string]any{
+	s.writeJSON(conn, writeMu, map[string]any{
 		"type":       "config",
 		"grid_x":     s.cfg.GridX,
 		"grid_y":     s.cfg.GridY,
@@ -108,6 +112,15 @@ func (s *Server) handleConfig(w http.ResponseWriter, _ *http.Request) {
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
+func (s *Server) handleStatus(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	payload := map[string]any{}
+	if s.statusFn != nil {
+		payload = s.statusFn()
+	}
+	_ = json.NewEncoder(w).Encode(payload)
+}
+
 func (s *Server) broadcast(frames <-chan types.Frame) {
 	for frame := range frames {
 		payload, err := json.Marshal(frame)
@@ -115,11 +128,23 @@ func (s *Server) broadcast(frames <-chan types.Frame) {
 			continue
 		}
 		s.mu.Lock()
-		for conn := range s.clients {
-			_ = conn.WriteMessage(websocket.TextMessage, payload)
+		for conn, writeMu := range s.clients {
+			s.writeMessage(conn, writeMu, websocket.TextMessage, payload)
 		}
 		s.mu.Unlock()
 	}
+}
+
+func (s *Server) writeJSON(conn *websocket.Conn, writeMu *sync.Mutex, payload any) {
+	writeMu.Lock()
+	defer writeMu.Unlock()
+	_ = conn.WriteJSON(payload)
+}
+
+func (s *Server) writeMessage(conn *websocket.Conn, writeMu *sync.Mutex, messageType int, payload []byte) {
+	writeMu.Lock()
+	defer writeMu.Unlock()
+	_ = conn.WriteMessage(messageType, payload)
 }
 
 func itoa(v int) string {

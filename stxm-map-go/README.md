@@ -55,3 +55,12 @@ Inspect Stream V2 CBOR dumps without full decompression:
 ```bash
 go run ./cmd/stxm-decode -path internal/simulator/cbor_testdata -limit 3
 ```
+
+## Dectris Compression (cgo)
+
+To enable tag 56500 decompression, place the dectris `compression` repo at
+`stxm-map-go/internal/compression/dectris` (symlink is fine) and build with:
+
+```bash
+go run -tags dectris ./cmd/stxm-map --debug
+```
