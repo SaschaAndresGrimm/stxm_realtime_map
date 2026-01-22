@@ -13,3 +13,4 @@ stxm_map_debug.log
 *_start_data.txt
 *_end_data.txt
 *_output_*_data.txt
+stxm-map-go/internal/compression/dectris/
