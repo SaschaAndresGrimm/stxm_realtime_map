@@ -61,6 +61,8 @@ func main() {
 		debugAcqRate    = flag.Float64("debug-acq-rate", 100.0, "Simulated acquisition rate (frames/sec)")
 		uiRate          = flag.Duration("ui-rate", 1*time.Second, "UI update interval for websocket clients")
 		outputDir       = flag.String("output-dir", "output", "Directory for output data files")
+		rawLogEnabled   = flag.Bool("raw-log", false, "Write raw CBOR messages to disk")
+		rawLogDir       = flag.String("raw-log-dir", "rawlog", "Directory for raw ingest logs")
 		ingestLogEvery  = flag.Int("ingest-log-every", 100, "Log every Nth ingest error")
 		ingestFallback  = flag.Bool("ingest-fallback", true, "Fall back to simulator when ingest fails")
 	)
@@ -83,6 +85,8 @@ func main() {
 		Debug:               *debug,
 		DebugAcqRate:        *debugAcqRate,
 		UIRate:              *uiRate,
+		RawLogEnabled:       *rawLogEnabled,
+		RawLogDir:           *rawLogDir,
 		PlotThreshold:       []string{"threshold_0", "threshold_1"},
 		OutputDir:           *outputDir,
 		IngestLogEvery:      *ingestLogEvery,
@@ -96,7 +100,21 @@ func main() {
 	if cfg.Debug {
 		rawMessages = simulator.Stream(ctx, cfg.GridX, cfg.GridY, cfg.DebugAcqRate)
 	} else {
-		ingestFrames, err := ingest.StreamWithLogEvery(ctx, cfg.Endpoint, cfg.IngestLogEvery)
+		var recorder ingest.RawRecorder
+		if cfg.RawLogEnabled {
+			writer, err := output.NewRawLogWriter(cfg.RawLogDir, "raw_cbor")
+			if err != nil {
+				log.Fatalf("failed to start raw log: %v", err)
+			}
+			recorder = writer
+			go func() {
+				<-ctx.Done()
+				if err := writer.Close(); err != nil {
+					log.Printf("raw log close failed: %v", err)
+				}
+			}()
+		}
+		ingestFrames, err := ingest.StreamWithLogEveryAndRecorder(ctx, cfg.Endpoint, cfg.IngestLogEvery, recorder)
 		if err != nil {
 			if cfg.IngestFallback {
 				log.Printf("failed to start ingest: %v; falling back to simulator", err)

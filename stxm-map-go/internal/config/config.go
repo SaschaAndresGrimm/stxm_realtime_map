@@ -12,6 +12,8 @@ type AppConfig struct {
 	Debug               bool
 	DebugAcqRate        float64
 	UIRate              time.Duration
+	RawLogEnabled       bool
+	RawLogDir           string
 	PlotThreshold       []string
 	OutputDir           string
 	IngestLogEvery      int

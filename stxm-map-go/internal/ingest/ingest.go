@@ -25,17 +25,28 @@ func DecodeFailures() uint64 {
 // Expects CBOR messages shaped like the Python pipeline:
 // { "type": "image", "image_id": <int>, "start_time": <float>, "data": { "threshold_0": <int>, ... } }
 func Stream(ctx context.Context, endpoint string) (<-chan types.RawMessage, error) {
-	return streamWithConfig(ctx, endpoint, 1)
+	return streamWithConfig(ctx, endpoint, 1, nil)
 }
 
 func StreamWithLogEvery(ctx context.Context, endpoint string, logEvery int) (<-chan types.RawMessage, error) {
 	if logEvery < 1 {
 		logEvery = 1
 	}
-	return streamWithConfig(ctx, endpoint, logEvery)
+	return streamWithConfig(ctx, endpoint, logEvery, nil)
 }
 
-func streamWithConfig(ctx context.Context, endpoint string, logEvery int) (<-chan types.RawMessage, error) {
+type RawRecorder interface {
+	Record(payload []byte) error
+}
+
+func StreamWithLogEveryAndRecorder(ctx context.Context, endpoint string, logEvery int, recorder RawRecorder) (<-chan types.RawMessage, error) {
+	if logEvery < 1 {
+		logEvery = 1
+	}
+	return streamWithConfig(ctx, endpoint, logEvery, recorder)
+}
+
+func streamWithConfig(ctx context.Context, endpoint string, logEvery int, recorder RawRecorder) (<-chan types.RawMessage, error) {
 	socket, err := zmq4.NewSocket(zmq4.PULL)
 	if err != nil {
 		return nil, err
@@ -72,6 +83,12 @@ func streamWithConfig(ctx context.Context, endpoint string, logEvery int) (<-cha
 				}
 				logEveryN(logEvery, "ingest recv error: %v", err)
 				continue
+			}
+
+			if recorder != nil {
+				if err := recorder.Record(msg); err != nil {
+					logEveryN(logEvery, "ingest raw log error: %v", err)
+				}
 			}
 
 			message, ok := decodeMessage(msg, logEvery)

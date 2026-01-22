@@ -22,6 +22,8 @@ Open `http://localhost:8888` in your browser.
 - `--ingest-log-every` controls ingest error log frequency (default: 100).
 - `--ingest-fallback` toggles simulator fallback on ingest failure.
 - `--ui-rate` controls websocket UI snapshot interval (default: 1s).
+- `--raw-log` enables writing raw CBOR messages to disk (off by default).
+- `--raw-log-dir` sets the directory for raw ingest logs (default: `rawlog`).
 - `--workers` sets the number of processing workers.
 - Web assets are embedded via `//go:embed`.
 - Ingest uses a receive timeout to allow clean shutdown when the context is canceled.
