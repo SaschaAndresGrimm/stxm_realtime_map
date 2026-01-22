@@ -5,12 +5,21 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sync/atomic"
+	"syscall"
+	"time"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/pebbe/zmq4"
 
 	"stxm-map-go/internal/types"
 )
+
+var decodeFailures atomic.Uint64
+
+func DecodeFailures() uint64 {
+	return decodeFailures.Load()
+}
 
 // Stream returns a channel of frames from a real detector.
 // Expects CBOR messages shaped like the Python pipeline:
@@ -29,6 +38,14 @@ func StreamWithLogEvery(ctx context.Context, endpoint string, logEvery int) (<-c
 func streamWithConfig(ctx context.Context, endpoint string, logEvery int) (<-chan types.RawMessage, error) {
 	socket, err := zmq4.NewSocket(zmq4.PULL)
 	if err != nil {
+		return nil, err
+	}
+	if err := socket.SetLinger(0); err != nil {
+		_ = socket.Close()
+		return nil, err
+	}
+	if err := socket.SetRcvtimeo(500 * time.Millisecond); err != nil {
+		_ = socket.Close()
 		return nil, err
 	}
 	if err := socket.Connect(endpoint); err != nil {
@@ -50,6 +67,9 @@ func streamWithConfig(ctx context.Context, endpoint string, logEvery int) (<-cha
 
 			msg, err := socket.RecvBytes(0)
 			if err != nil {
+				if zmq4.AsErrno(err) == zmq4.Errno(syscall.EAGAIN) {
+					continue
+				}
 				logEveryN(logEvery, "ingest recv error: %v", err)
 				continue
 			}
@@ -75,12 +95,14 @@ func decodeMessage(msg []byte, logEvery int) (types.RawMessage, bool) {
 	var payload map[string]any
 	if err := cbor.Unmarshal(msg, &payload); err != nil {
 		logEveryN(logEvery, "ingest CBOR decode error: %v", err)
+		decodeFailures.Add(1)
 		return types.RawMessage{}, false
 	}
 
 	msgType, _ := payload["type"].(string)
 	if msgType == "" {
 		logEveryN(logEvery, "ingest missing message type")
+		decodeFailures.Add(1)
 		return types.RawMessage{}, false
 	}
 
@@ -98,9 +120,10 @@ func decodeMessage(msg []byte, logEvery int) (types.RawMessage, bool) {
 		}, true
 	}
 
-	dataRaw, ok := payload["data"].(map[string]any)
+	dataRaw, ok := toStringMap(payload["data"])
 	if !ok {
 		logEveryN(logEvery, "ingest invalid data field")
+		decodeFailures.Add(1)
 		return types.RawMessage{}, false
 	}
 
@@ -115,17 +138,20 @@ func decodeMessage(msg []byte, logEvery int) (types.RawMessage, bool) {
 	}
 	if len(decoded) == 0 {
 		logEveryN(logEvery, "ingest image had no decoded channels")
+		decodeFailures.Add(1)
 		return types.RawMessage{}, false
 	}
 
 	imageID, err := toInt(payload["image_id"])
 	if err != nil {
 		logEveryN(logEvery, "ingest invalid image_id: %v", err)
+		decodeFailures.Add(1)
 		return types.RawMessage{}, false
 	}
 	startTime, err := toFloat(payload["start_time"])
 	if err != nil {
 		logEveryN(logEvery, "ingest invalid start_time: %v", err)
+		decodeFailures.Add(1)
 		return types.RawMessage{}, false
 	}
 
@@ -169,6 +195,25 @@ func toFloat(v any) (float64, error) {
 	default:
 		return 0, fmt.Errorf("unsupported float type %T", v)
 	}
+}
+
+func toStringMap(v any) (map[string]any, bool) {
+	if typed, ok := v.(map[string]any); ok {
+		return typed, true
+	}
+	raw, ok := v.(map[any]any)
+	if !ok {
+		return nil, false
+	}
+	out := make(map[string]any, len(raw))
+	for key, value := range raw {
+		ks, ok := key.(string)
+		if !ok {
+			return nil, false
+		}
+		out[ks] = value
+	}
+	return out, true
 }
 
 // toUint32 kept for future typed-array helpers.

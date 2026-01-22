@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -20,6 +21,30 @@ import (
 	"stxm-map-go/internal/simulator"
 	"stxm-map-go/internal/types"
 )
+
+type metrics struct {
+	rawMessages      atomic.Uint64
+	imageMessages    atomic.Uint64
+	metaMessages     atomic.Uint64
+	framesProcessed  atomic.Uint64
+	framesBroadcast  atomic.Uint64
+	outputWriteOK    atomic.Uint64
+	outputWriteError atomic.Uint64
+	metadataWriteErr atomic.Uint64
+}
+
+func (m *metrics) snapshot() map[string]any {
+	return map[string]any{
+		"raw_messages_total":       m.rawMessages.Load(),
+		"image_messages_total":     m.imageMessages.Load(),
+		"meta_messages_total":      m.metaMessages.Load(),
+		"frames_processed_total":   m.framesProcessed.Load(),
+		"frames_broadcast_total":   m.framesBroadcast.Load(),
+		"output_write_ok_total":    m.outputWriteOK.Load(),
+		"output_write_err_total":   m.outputWriteError.Load(),
+		"metadata_write_err_total": m.metadataWriteErr.Load(),
+	}
+}
 
 func main() {
 	var (
@@ -91,6 +116,7 @@ func main() {
 	runTimestamp := ""
 	var runMu sync.Mutex
 	var statusMu sync.Mutex
+	var metrics metrics
 	status := map[string]any{
 		"detector":   "unknown",
 		"stream":     "idle",
@@ -128,7 +154,9 @@ func main() {
 	go func() {
 		defer close(incoming)
 		for msg := range rawMessages {
+			metrics.rawMessages.Add(1)
 			if msg.Type != "image" {
+				metrics.metaMessages.Add(1)
 				runMu.Lock()
 				if runTimestamp == "" {
 					runTimestamp = processing.Timestamp()
@@ -141,6 +169,7 @@ func main() {
 					kind = "metadata"
 				}
 				if err := output.WriteMetadata(cfg.OutputDir, ts, kind, msg.Meta); err != nil {
+					metrics.metadataWriteErr.Add(1)
 					log.Printf("metadata write failed: %v", err)
 				}
 				if msg.Type == "end" {
@@ -151,6 +180,7 @@ func main() {
 				continue
 			}
 
+			metrics.imageMessages.Add(1)
 			frame := msg.Image
 			select {
 			case <-ctx.Done():
@@ -170,6 +200,7 @@ func main() {
 				if !ok {
 					continue
 				}
+				metrics.framesProcessed.Add(1)
 				statusMu.Lock()
 				status["stream"] = "receiving"
 				status["last_frame"] = time.Now().Format(time.RFC3339)
@@ -203,11 +234,13 @@ func main() {
 				status["filewriter"] = "writing"
 				statusMu.Unlock()
 				if err := output.WriteSeries(cfg.OutputDir, ts, cfg.GridX, cfg.GridY, agg.Snapshot()); err != nil {
+					metrics.outputWriteError.Add(1)
 					log.Printf("output write failed: %v", err)
 					statusMu.Lock()
 					status["filewriter"] = "error"
 					statusMu.Unlock()
 				} else {
+					metrics.outputWriteOK.Add(1)
 					log.Printf("wrote series outputs for %s", ts)
 					statusMu.Lock()
 					status["filewriter"] = "ok"
@@ -220,6 +253,7 @@ func main() {
 			case <-ctx.Done():
 				return
 			case broadcast <- frame:
+				metrics.framesBroadcast.Add(1)
 			}
 		}
 	}()
@@ -249,6 +283,9 @@ func main() {
 		for k, v := range status {
 			copy[k] = v
 		}
+		metricsPayload := metrics.snapshot()
+		metricsPayload["ingest_decode_failures_total"] = ingest.DecodeFailures()
+		copy["metrics"] = metricsPayload
 		return copy
 	}
 

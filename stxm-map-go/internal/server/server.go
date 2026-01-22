@@ -26,6 +26,12 @@ type Server struct {
 	statusFn func() map[string]any
 }
 
+const (
+	writeWait = 10 * time.Second
+	pongWait  = 60 * time.Second
+	pingEvery = (pongWait * 9) / 10
+)
+
 func Run(ctx context.Context, cfg config.AppConfig, frames <-chan types.Frame, statusFn func() map[string]any) error {
 	srv := &Server{
 		upgrader: websocket.Upgrader{
@@ -55,10 +61,12 @@ func Run(ctx context.Context, cfg config.AppConfig, frames <-chan types.Frame, s
 
 	go func() {
 		<-ctx.Done()
-		_ = httpServer.Close()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = httpServer.Shutdown(shutdownCtx)
 	}()
 
-	go srv.broadcast(frames)
+	go srv.broadcast(ctx, frames)
 
 	return httpServer.ListenAndServe()
 }
@@ -68,13 +76,18 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
+	conn.SetReadLimit(1 << 20)
+	_ = conn.SetReadDeadline(time.Now().Add(pongWait))
+	conn.SetPongHandler(func(string) error {
+		return conn.SetReadDeadline(time.Now().Add(pongWait))
+	})
 
 	s.mu.Lock()
 	writeMu := &sync.Mutex{}
 	s.clients[conn] = writeMu
 	s.mu.Unlock()
 
-	s.writeJSON(conn, writeMu, map[string]any{
+	_ = s.writeJSON(conn, writeMu, map[string]any{
 		"type":       "config",
 		"grid_x":     s.cfg.GridX,
 		"grid_y":     s.cfg.GridY,
@@ -82,12 +95,24 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	})
 
 	go func() {
-		defer func() {
-			s.mu.Lock()
-			delete(s.clients, conn)
-			s.mu.Unlock()
-			conn.Close()
+		done := make(chan struct{})
+		go func() {
+			ticker := time.NewTicker(pingEvery)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-done:
+					return
+				case <-ticker.C:
+					if err := s.writeMessage(conn, writeMu, websocket.PingMessage, nil); err != nil {
+						_ = conn.Close()
+						return
+					}
+				}
+			}
 		}()
+		defer close(done)
+		defer s.removeClient(conn)
 		for {
 			if _, _, err := conn.ReadMessage(); err != nil {
 				return
@@ -118,33 +143,67 @@ func (s *Server) handleStatus(w http.ResponseWriter, _ *http.Request) {
 	if s.statusFn != nil {
 		payload = s.statusFn()
 	}
+	if metrics, ok := payload["metrics"].(map[string]any); ok {
+		metrics["ws_clients"] = s.clientCount()
+	} else {
+		payload["ws_clients"] = s.clientCount()
+	}
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
-func (s *Server) broadcast(frames <-chan types.Frame) {
-	for frame := range frames {
-		payload, err := json.Marshal(frame)
-		if err != nil {
-			continue
+func (s *Server) broadcast(ctx context.Context, frames <-chan types.Frame) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case frame, ok := <-frames:
+			if !ok {
+				return
+			}
+			payload, err := json.Marshal(frame)
+			if err != nil {
+				continue
+			}
+			var stale []*websocket.Conn
+			s.mu.Lock()
+			for conn, writeMu := range s.clients {
+				if err := s.writeMessage(conn, writeMu, websocket.TextMessage, payload); err != nil {
+					stale = append(stale, conn)
+				}
+			}
+			s.mu.Unlock()
+			for _, conn := range stale {
+				s.removeClient(conn)
+			}
 		}
-		s.mu.Lock()
-		for conn, writeMu := range s.clients {
-			s.writeMessage(conn, writeMu, websocket.TextMessage, payload)
-		}
-		s.mu.Unlock()
 	}
 }
 
-func (s *Server) writeJSON(conn *websocket.Conn, writeMu *sync.Mutex, payload any) {
-	writeMu.Lock()
-	defer writeMu.Unlock()
-	_ = conn.WriteJSON(payload)
+func (s *Server) removeClient(conn *websocket.Conn) {
+	s.mu.Lock()
+	delete(s.clients, conn)
+	s.mu.Unlock()
+	conn.Close()
 }
 
-func (s *Server) writeMessage(conn *websocket.Conn, writeMu *sync.Mutex, messageType int, payload []byte) {
+func (s *Server) clientCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.clients)
+}
+
+func (s *Server) writeJSON(conn *websocket.Conn, writeMu *sync.Mutex, payload any) error {
 	writeMu.Lock()
 	defer writeMu.Unlock()
-	_ = conn.WriteMessage(messageType, payload)
+	_ = conn.SetWriteDeadline(time.Now().Add(writeWait))
+	return conn.WriteJSON(payload)
+}
+
+func (s *Server) writeMessage(conn *websocket.Conn, writeMu *sync.Mutex, messageType int, payload []byte) error {
+	writeMu.Lock()
+	defer writeMu.Unlock()
+	_ = conn.SetWriteDeadline(time.Now().Add(writeWait))
+	return conn.WriteMessage(messageType, payload)
 }
 
 func itoa(v int) string {

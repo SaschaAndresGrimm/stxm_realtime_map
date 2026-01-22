@@ -13,7 +13,7 @@ Open `http://localhost:8888` in your browser.
 
 ## Notes
 
-- Currently uses the simulator only. ZMQ/CBOR ingest is the next step.
+- Supports both simulator and ZMQ/CBOR ingest; use `--endpoint` or `--detector-ip` to enable ingest.
 - `--detector-ip` sets the detector IP for both ZMQ ingest and SIMPLON status polling.
 - `--api-port` sets the SIMPLON API port (default: 80).
 - `--zmq-port` sets the ZMQ port (default: 31001).
@@ -23,6 +23,7 @@ Open `http://localhost:8888` in your browser.
 - `--ingest-fallback` toggles simulator fallback on ingest failure.
 - `--workers` sets the number of processing workers.
 - Web assets are embedded via `//go:embed`.
+ - Ingest uses a receive timeout to allow clean shutdown when the context is canceled.
 
 ## Example (ingest mode)
 
@@ -47,6 +48,12 @@ that data type (mirrors the Python `processFrame` behavior).
 
 - `GET /healthz` returns `ok`
 - `GET /config` returns JSON configuration for grid/thresholds
+- `GET /status` returns detector status plus a `metrics` block with counters:
+  - `raw_messages_total`, `image_messages_total`, `meta_messages_total`
+  - `frames_processed_total`, `frames_broadcast_total`
+  - `output_write_ok_total`, `output_write_err_total`, `metadata_write_err_total`
+  - `ingest_decode_failures_total`
+  - `ws_clients`
 
 ## CBOR Decode Harness
 
