@@ -39,6 +39,18 @@ header {
   align-items: center;
 }
 
+.stale-banner {
+  padding: 8px 16px;
+  background: #5b1a1a;
+  color: #fff1e7;
+  font-size: 12px;
+  text-align: center;
+}
+
+.stale-banner.hidden {
+  display: none;
+}
+
 h1 {
   font-size: 16px;
   margin: 0;
@@ -80,6 +92,39 @@ main {
   bottom: 0;
   z-index: 5;
   height: var(--footer-height, 56px);
+}
+
+@media (max-width: 900px) {
+  .toggle {
+    min-height: 44px;
+  }
+
+  .toggle input[type="checkbox"] {
+    width: 24px;
+    height: 24px;
+  }
+
+  select {
+    min-height: 44px;
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+
+  .export-btn {
+    min-height: 44px;
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+
+  .footer-status {
+    gap: 8px;
+    font-size: 10px;
+    padding: 6px 12px;
+  }
+
+  .footer-status .status-row.optional {
+    display: none;
+  }
 }
 
 body.panel-opened {
@@ -152,6 +197,7 @@ body.panel-opened {
   align-items: stretch;
   grid-auto-rows: minmax(0, 1fr);
   padding-bottom: 12px;
+  touch-action: pan-x pan-y;
 }
 
 .plot {

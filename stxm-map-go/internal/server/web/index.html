@@ -13,6 +13,7 @@
         <div id="status">Connecting…</div>
       </div>
     </header>
+    <div id="stale-banner" class="stale-banner hidden">No data (stream stalled)</div>
     <aside id="control-panel" class="panel">
       <div id="panel-handle" class="panel-handle" title="Drag to resize"></div>
       <div class="panel-header">
@@ -97,14 +98,14 @@
           <span class="status-text">idle</span>
         </span>
       </div>
-      <div class="status-row">
+      <div class="status-row optional">
         <span class="status-label">Filewriter</span>
         <span id="status-filewriter" class="status-pill">
           <span class="status-dot"></span>
           <span class="status-text">idle</span>
         </span>
       </div>
-      <div class="status-row">
+      <div class="status-row optional">
         <span class="status-label">Monitor</span>
         <span id="status-monitor" class="status-pill">
           <span class="status-dot"></span>

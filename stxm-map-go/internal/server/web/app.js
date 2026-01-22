@@ -28,6 +28,7 @@ const footerEl = document.querySelector(".footer-status");
 const headerEl = document.querySelector("header");
 const plotsContainer = document.getElementById("plots");
 const accentColor = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#0f766e";
+const staleBanner = document.getElementById("stale-banner");
 
 let gridX = 0;
 let gridY = 0;
@@ -41,6 +42,8 @@ const labelMinPixels = 20;
 let currentScheme = "blue-yellow-red";
 let manualMin = 0;
 let manualMax = 255;
+const mobileQuery = window.matchMedia("(max-width: 900px)");
+const isMobile = () => mobileQuery.matches;
 let histogramThreshold = "";
 let histogramDirty = false;
 let histogramDrag = null;
@@ -571,6 +574,58 @@ window.addEventListener("keydown", (event) => {
   }
 });
 
+const activePointers = new Map();
+let pinchStartDist = null;
+let pinchStartZoom = null;
+
+function pointerDistance(a, b) {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return Math.hypot(dx, dy);
+}
+
+plotsContainer?.addEventListener("pointerdown", (event) => {
+  if (event.pointerType !== "touch") return;
+  activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  if (activePointers.size === 2) {
+    const points = Array.from(activePointers.values());
+    pinchStartDist = pointerDistance(points[0], points[1]);
+    pinchStartZoom = globalZoom;
+    plotsContainer.style.touchAction = "none";
+    if (syncViewsToggle && !syncViewsToggle.checked) {
+      syncViewsToggle.checked = true;
+      syncViewsToggle.dispatchEvent(new Event("change"));
+    }
+  }
+});
+
+plotsContainer?.addEventListener("pointermove", (event) => {
+  if (!activePointers.has(event.pointerId)) return;
+  activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  if (activePointers.size === 2 && pinchStartDist && pinchStartZoom != null) {
+    event.preventDefault();
+    const points = Array.from(activePointers.values());
+    const dist = pointerDistance(points[0], points[1]);
+    if (pinchStartDist > 0) {
+      const nextZoom = pinchStartZoom * (dist / pinchStartDist);
+      setGlobalZoom(Math.min(8, Math.max(minZoom, nextZoom)));
+    }
+  }
+});
+
+function endPointer(event) {
+  if (!activePointers.has(event.pointerId)) return;
+  activePointers.delete(event.pointerId);
+  if (activePointers.size < 2) {
+    pinchStartDist = null;
+    pinchStartZoom = null;
+    plotsContainer.style.touchAction = "pan-x pan-y";
+  }
+}
+
+plotsContainer?.addEventListener("pointerup", endPointer);
+plotsContainer?.addEventListener("pointercancel", endPointer);
+
 colorSchemeSelect?.addEventListener("change", () => {
   currentScheme = colorSchemeSelect.value;
   plots.forEach((plot) => redrawPlot(plot));
@@ -649,6 +704,27 @@ function updatePanelPadding() {
   }
 }
 
+function closePanelIfMobile() {
+  if (!controlPanel || !isMobile()) {
+    return;
+  }
+  if (controlPanel.classList.contains("panel-open")) {
+    controlPanel.classList.remove("panel-open");
+    updatePanelPadding();
+  }
+}
+
+controlPanel?.addEventListener("change", () => {
+  setTimeout(closePanelIfMobile, 0);
+});
+
+controlPanel?.addEventListener("click", (event) => {
+  const target = event.target;
+  if (target && target.closest("button")) {
+    setTimeout(closePanelIfMobile, 0);
+  }
+});
+
 contrastMin?.addEventListener("input", () => {
   manualMin = Math.min(parseInt(contrastMin.value, 10), manualMax - 1);
   contrastMin.value = `${manualMin}`;
@@ -712,10 +788,18 @@ function scheduleHistogramUpdate() {
     return;
   }
   histogramDirty = true;
-  requestAnimationFrame(() => {
-    histogramDirty = false;
-    renderHistogram();
-  });
+  const delay = isMobile() ? 120 : 0;
+  if (delay > 0) {
+    setTimeout(() => {
+      histogramDirty = false;
+      renderHistogram();
+    }, delay);
+  } else {
+    requestAnimationFrame(() => {
+      histogramDirty = false;
+      renderHistogram();
+    });
+  }
 }
 
 function attachHistogramInteractions() {
@@ -1010,10 +1094,18 @@ function scheduleProjectionUpdate(plot) {
     return;
   }
   plot.projectionDirty.value = true;
-  requestAnimationFrame(() => {
-    plot.projectionDirty.value = false;
-    renderProjections(plot);
-  });
+  const delay = isMobile() ? 120 : 0;
+  if (delay > 0) {
+    setTimeout(() => {
+      plot.projectionDirty.value = false;
+      renderProjections(plot);
+    }, delay);
+  } else {
+    requestAnimationFrame(() => {
+      plot.projectionDirty.value = false;
+      renderProjections(plot);
+    });
+  }
 }
 
 function renderProjections(plot) {
@@ -1263,6 +1355,13 @@ function startStatusPolling() {
         }
         lastRecvCount = recvTotal;
         lastRecvTime = now;
+      }
+
+      if (staleBanner) {
+        const lastIngest = Date.parse(data.last_ingest || "");
+        const ageMs = Number.isFinite(lastIngest) ? Date.now() - lastIngest : Number.POSITIVE_INFINITY;
+        const isStale = ageMs > 5000;
+        staleBanner.classList.toggle("hidden", !isStale);
       }
     } catch (err) {
       setStatus(streamStatusEl, "error");
