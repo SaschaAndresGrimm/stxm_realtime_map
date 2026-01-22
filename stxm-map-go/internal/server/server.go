@@ -12,7 +12,6 @@ import (
 	"github.com/gorilla/websocket"
 
 	"stxm-map-go/internal/config"
-	"stxm-map-go/internal/types"
 )
 
 //go:embed web/*
@@ -32,7 +31,7 @@ const (
 	pingEvery = (pongWait * 9) / 10
 )
 
-func Run(ctx context.Context, cfg config.AppConfig, frames <-chan types.Frame, statusFn func() map[string]any) error {
+func Run(ctx context.Context, cfg config.AppConfig, messages <-chan any, statusFn func() map[string]any) error {
 	srv := &Server{
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool { return true },
@@ -66,7 +65,7 @@ func Run(ctx context.Context, cfg config.AppConfig, frames <-chan types.Frame, s
 		_ = httpServer.Shutdown(shutdownCtx)
 	}()
 
-	go srv.broadcast(ctx, frames)
+	go srv.broadcast(ctx, messages)
 
 	return httpServer.ListenAndServe()
 }
@@ -151,16 +150,16 @@ func (s *Server) handleStatus(w http.ResponseWriter, _ *http.Request) {
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
-func (s *Server) broadcast(ctx context.Context, frames <-chan types.Frame) {
+func (s *Server) broadcast(ctx context.Context, messages <-chan any) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case frame, ok := <-frames:
+		case message, ok := <-messages:
 			if !ok {
 				return
 			}
-			payload, err := json.Marshal(frame)
+			payload, err := json.Marshal(message)
 			if err != nil {
 				continue
 			}

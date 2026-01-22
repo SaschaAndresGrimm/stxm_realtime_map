@@ -323,6 +323,74 @@ function updatePixel(threshold, imageId, value) {
   scheduleProjectionUpdate(plot);
 }
 
+function applySnapshot(threshold, payload) {
+  const plot = plots.get(threshold);
+  if (!plot || !payload) return;
+
+  const values = payload.values;
+  const mask = payload.mask;
+  const total = gridX * gridY;
+  if (!Array.isArray(values) || values.length < total) {
+    return;
+  }
+
+  plot.xSums.fill(0);
+  plot.ySums.fill(0);
+  plot.rowCounts.fill(0);
+
+  let minVal = Number.POSITIVE_INFINITY;
+  let maxVal = Number.NEGATIVE_INFINITY;
+  for (let i = 0; i < total; i++) {
+    const value = values[i] || 0;
+    const valid = Array.isArray(mask) ? Boolean(mask[i]) : true;
+    plot.values[i] = value;
+    if (valid) {
+      if (value < minVal) minVal = value;
+      if (value > maxVal) maxVal = value;
+      const x = i % gridX;
+      const y = Math.floor(i / gridX);
+      plot.xSums[x] += value;
+      plot.ySums[y] += value;
+      plot.rowCounts[y] += 1;
+    }
+  }
+
+  if (!Number.isFinite(minVal) || !Number.isFinite(maxVal)) {
+    minVal = 0;
+    maxVal = 1;
+  }
+  plot.minValue.value = minVal;
+  plot.maxValue.value = maxVal;
+
+  let renderMin = minVal;
+  let renderMax = maxVal;
+  if (!autoscaleToggle.checked) {
+    renderMin = manualMin;
+    renderMax = manualMax;
+  }
+  if (autoscaleToggle.checked) {
+    plot.minLabel.textContent = `${plot.minValue.value}`;
+    plot.maxLabel.textContent = `${plot.maxValue.value}`;
+  } else {
+    plot.minLabel.textContent = `${manualMin}`;
+    plot.maxLabel.textContent = `${manualMax}`;
+  }
+
+  const denom = Math.max(1, renderMax - renderMin);
+  for (let i = 0; i < total; i++) {
+    const value = plot.values[i];
+    const norm = Math.min(1, Math.max(0, (value - renderMin) / denom));
+    const [r, g, b] = colorFromScheme(norm, currentScheme);
+    const idx = i * 4;
+    plot.imageData.data[idx] = r;
+    plot.imageData.data[idx + 1] = g;
+    plot.imageData.data[idx + 2] = b;
+    plot.imageData.data[idx + 3] = 255;
+  }
+  plot.ctx.putImageData(plot.imageData, 0, 0);
+  scheduleProjectionUpdate(plot);
+}
+
 const ws = new WebSocket(`ws://${location.host}/ws`);
 ws.addEventListener("open", () => {
   statusEl.textContent = "Connected";
@@ -353,6 +421,25 @@ ws.addEventListener("message", (event) => {
     });
     scheduleHistogramUpdate();
     scheduleLayoutRefresh();
+    return;
+  }
+
+  if (msg.type === "snapshot") {
+    if (!gridX || !gridY) return;
+    Object.entries(msg.data || {}).forEach(([threshold, payload]) => {
+      applySnapshot(threshold, payload);
+    });
+    plots.forEach((plot) => updatePixelLabels(plot));
+    scheduleHistogramUpdate();
+
+    frameCount += 1;
+    const now = performance.now();
+    if (now - lastFrameTime >= 1000) {
+      const fps = Math.round((frameCount * 1000) / (now - lastFrameTime));
+      fpsEl.textContent = `${fps} fps`;
+      frameCount = 0;
+      lastFrameTime = now;
+    }
     return;
   }
 

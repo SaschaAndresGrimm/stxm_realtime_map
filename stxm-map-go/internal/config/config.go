@@ -11,6 +11,7 @@ type AppConfig struct {
 	GridY               int
 	Debug               bool
 	DebugAcqRate        float64
+	UIRate              time.Duration
 	PlotThreshold       []string
 	OutputDir           string
 	IngestLogEvery      int

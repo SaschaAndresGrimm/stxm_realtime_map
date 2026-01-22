@@ -59,6 +59,7 @@ func main() {
 		gridY           = flag.Int("grid-y", 52, "Grid height in pixels")
 		debug           = flag.Bool("debug", true, "Run with simulated data")
 		debugAcqRate    = flag.Float64("debug-acq-rate", 100.0, "Simulated acquisition rate (frames/sec)")
+		uiRate          = flag.Duration("ui-rate", 1*time.Second, "UI update interval for websocket clients")
 		outputDir       = flag.String("output-dir", "output", "Directory for output data files")
 		ingestLogEvery  = flag.Int("ingest-log-every", 100, "Log every Nth ingest error")
 		ingestFallback  = flag.Bool("ingest-fallback", true, "Fall back to simulator when ingest fails")
@@ -81,6 +82,7 @@ func main() {
 		GridY:               *gridY,
 		Debug:               *debug,
 		DebugAcqRate:        *debugAcqRate,
+		UIRate:              *uiRate,
 		PlotThreshold:       []string{"threshold_0", "threshold_1"},
 		OutputDir:           *outputDir,
 		IngestLogEvery:      *ingestLogEvery,
@@ -111,7 +113,7 @@ func main() {
 
 	processed := make(chan types.Frame, 128)
 	incoming := make(chan types.RawFrame, 128)
-	broadcast := make(chan types.Frame, 128)
+	uiMessages := make(chan any, 16)
 	agg := processing.NewAggregator(cfg.GridX, cfg.GridY)
 	runTimestamp := ""
 	var runMu sync.Mutex
@@ -224,40 +226,50 @@ func main() {
 	}()
 
 	go func() {
-		defer close(broadcast)
-		for frame := range processed {
-			if agg.AddFrame(frame) {
-				runMu.Lock()
-				if runTimestamp == "" {
-					runTimestamp = processing.Timestamp()
-				}
-				ts := runTimestamp
-				runMu.Unlock()
-
-				statusMu.Lock()
-				status["filewriter"] = "writing"
-				statusMu.Unlock()
-				if err := output.WriteSeries(cfg.OutputDir, ts, cfg.GridX, cfg.GridY, agg.Snapshot()); err != nil {
-					metrics.outputWriteError.Add(1)
-					log.Printf("output write failed: %v", err)
-					statusMu.Lock()
-					status["filewriter"] = "error"
-					statusMu.Unlock()
-				} else {
-					metrics.outputWriteOK.Add(1)
-					log.Printf("wrote series outputs for %s", ts)
-					statusMu.Lock()
-					status["filewriter"] = "ok"
-					status["last_write"] = time.Now().Format(time.RFC3339)
-					statusMu.Unlock()
-				}
-				agg.Reset()
-			}
+		defer close(uiMessages)
+		if cfg.UIRate <= 0 {
+			cfg.UIRate = 1 * time.Second
+		}
+		ticker := time.NewTicker(cfg.UIRate)
+		defer ticker.Stop()
+		for {
 			select {
 			case <-ctx.Done():
 				return
-			case broadcast <- frame:
-				metrics.framesBroadcast.Add(1)
+			case frame, ok := <-processed:
+				if !ok {
+					flushSnapshot(&metrics, uiMessages, agg)
+					return
+				}
+				if agg.AddFrame(frame) {
+					runMu.Lock()
+					if runTimestamp == "" {
+						runTimestamp = processing.Timestamp()
+					}
+					ts := runTimestamp
+					runMu.Unlock()
+
+					statusMu.Lock()
+					status["filewriter"] = "writing"
+					statusMu.Unlock()
+					if err := output.WriteSeries(cfg.OutputDir, ts, cfg.GridX, cfg.GridY, agg.Snapshot()); err != nil {
+						metrics.outputWriteError.Add(1)
+						log.Printf("output write failed: %v", err)
+						statusMu.Lock()
+						status["filewriter"] = "error"
+						statusMu.Unlock()
+					} else {
+						metrics.outputWriteOK.Add(1)
+						log.Printf("wrote series outputs for %s", ts)
+						statusMu.Lock()
+						status["filewriter"] = "ok"
+						status["last_write"] = time.Now().Format(time.RFC3339)
+						statusMu.Unlock()
+					}
+					agg.Reset()
+				}
+			case <-ticker.C:
+				flushSnapshot(&metrics, uiMessages, agg)
 			}
 		}
 	}()
@@ -312,7 +324,23 @@ func main() {
 		return copy
 	}
 
-	if err := server.Run(ctx, cfg, broadcast, statusFn); err != nil {
+	if err := server.Run(ctx, cfg, uiMessages, statusFn); err != nil {
 		log.Printf("server stopped: %v", err)
+	}
+}
+
+func flushSnapshot(metrics *metrics, uiMessages chan any, agg *processing.Aggregator) {
+	snapshotData := agg.SnapshotCopy()
+	if len(snapshotData) == 0 {
+		return
+	}
+	message := types.UISnapshot{
+		Type: "snapshot",
+		Data: snapshotData,
+	}
+	select {
+	case uiMessages <- message:
+		metrics.framesBroadcast.Add(1)
+	default:
 	}
 }

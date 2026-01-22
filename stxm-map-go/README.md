@@ -21,9 +21,10 @@ Open `http://localhost:8888` in your browser.
 - `--simplon-interval` sets the polling interval for detector status (default: 1s).
 - `--ingest-log-every` controls ingest error log frequency (default: 100).
 - `--ingest-fallback` toggles simulator fallback on ingest failure.
+- `--ui-rate` controls websocket UI snapshot interval (default: 1s).
 - `--workers` sets the number of processing workers.
 - Web assets are embedded via `//go:embed`.
- - Ingest uses a receive timeout to allow clean shutdown when the context is canceled.
+- Ingest uses a receive timeout to allow clean shutdown when the context is canceled.
 
 ## Example (ingest mode)
 

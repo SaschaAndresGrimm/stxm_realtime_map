@@ -65,6 +65,21 @@ func (a *Aggregator) Snapshot() map[string]*ThresholdData {
 	return a.data
 }
 
+func (a *Aggregator) SnapshotCopy() map[string]types.ThresholdSnapshot {
+	snapshot := make(map[string]types.ThresholdSnapshot, len(a.data))
+	for threshold, data := range a.data {
+		values := make([]uint32, len(data.Values))
+		copy(values, data.Values)
+		mask := make([]bool, len(data.Mask))
+		copy(mask, data.Mask)
+		snapshot[threshold] = types.ThresholdSnapshot{
+			Values: values,
+			Mask:   mask,
+		}
+	}
+	return snapshot
+}
+
 func Timestamp() string {
 	return time.Now().Format("20060102_150405")
 }
