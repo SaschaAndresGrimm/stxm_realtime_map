@@ -18,11 +18,12 @@ import (
 var webFS embed.FS
 
 type Server struct {
-	upgrader websocket.Upgrader
-	clients  map[*websocket.Conn]*sync.Mutex
-	mu       sync.Mutex
-	cfg      config.AppConfig
-	statusFn func() map[string]any
+	upgrader   websocket.Upgrader
+	clients    map[*websocket.Conn]*sync.Mutex
+	mu         sync.Mutex
+	cfg        config.AppConfig
+	statusFn   func() map[string]any
+	snapshotFn func() any
 }
 
 const (
@@ -31,14 +32,15 @@ const (
 	pingEvery = (pongWait * 9) / 10
 )
 
-func Run(ctx context.Context, cfg config.AppConfig, messages <-chan any, statusFn func() map[string]any) error {
+func Run(ctx context.Context, cfg config.AppConfig, messages <-chan any, statusFn func() map[string]any, snapshotFn func() any) error {
 	srv := &Server{
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool { return true },
 		},
-		clients:  make(map[*websocket.Conn]*sync.Mutex),
-		cfg:      cfg,
-		statusFn: statusFn,
+		clients:    make(map[*websocket.Conn]*sync.Mutex),
+		cfg:        cfg,
+		statusFn:   statusFn,
+		snapshotFn: snapshotFn,
 	}
 
 	sub, err := fs.Sub(webFS, "web")
@@ -113,8 +115,26 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		defer close(done)
 		defer s.removeClient(conn)
 		for {
-			if _, _, err := conn.ReadMessage(); err != nil {
+			messageType, payload, err := conn.ReadMessage()
+			if err != nil {
 				return
+			}
+			if messageType != websocket.TextMessage {
+				continue
+			}
+			var request map[string]any
+			if err := json.Unmarshal(payload, &request); err != nil {
+				continue
+			}
+			if request["type"] == "snapshot_request" {
+				if s.snapshotFn == nil {
+					continue
+				}
+				snapshot := s.snapshotFn()
+				if snapshot == nil {
+					continue
+				}
+				_ = s.writeJSON(conn, writeMu, snapshot)
 			}
 		}
 	}()

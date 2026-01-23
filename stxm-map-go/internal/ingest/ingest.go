@@ -16,9 +16,15 @@ import (
 )
 
 var decodeFailures atomic.Uint64
+var decodeCount atomic.Uint64
+var decodeNanos atomic.Uint64
 
 func DecodeFailures() uint64 {
 	return decodeFailures.Load()
+}
+
+func DecodeTiming() (count uint64, nanos uint64) {
+	return decodeCount.Load(), decodeNanos.Load()
 }
 
 // Stream returns a channel of frames from a real detector.
@@ -109,6 +115,12 @@ func streamWithConfig(ctx context.Context, endpoint string, logEvery int, record
 }
 
 func decodeMessage(msg []byte, logEvery int) (types.RawMessage, bool) {
+	start := time.Now()
+	defer func() {
+		decodeCount.Add(1)
+		decodeNanos.Add(uint64(time.Since(start).Nanoseconds()))
+	}()
+
 	var payload map[string]any
 	if err := cbor.Unmarshal(msg, &payload); err != nil {
 		logEveryN(logEvery, "ingest CBOR decode error: %v", err)

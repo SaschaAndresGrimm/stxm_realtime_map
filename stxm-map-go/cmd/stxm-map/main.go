@@ -31,6 +31,10 @@ type metrics struct {
 	outputWriteOK    atomic.Uint64
 	outputWriteError atomic.Uint64
 	metadataWriteErr atomic.Uint64
+	processCount     atomic.Uint64
+	processNanos     atomic.Uint64
+	writeCount       atomic.Uint64
+	writeNanos       atomic.Uint64
 }
 
 func (m *metrics) snapshot() map[string]any {
@@ -43,6 +47,10 @@ func (m *metrics) snapshot() map[string]any {
 		"output_write_ok_total":    m.outputWriteOK.Load(),
 		"output_write_err_total":   m.outputWriteError.Load(),
 		"metadata_write_err_total": m.metadataWriteErr.Load(),
+		"process_total":            m.processCount.Load(),
+		"process_nanos_total":      m.processNanos.Load(),
+		"write_total":              m.writeCount.Load(),
+		"write_nanos_total":        m.writeNanos.Load(),
 	}
 }
 
@@ -137,6 +145,9 @@ func main() {
 	var runMu sync.Mutex
 	var statusMu sync.Mutex
 	var metrics metrics
+	var latestSnapshotMu sync.Mutex
+	var latestSnapshot types.UISnapshot
+	var hasSnapshot bool
 	status := map[string]any{
 		"detector":    "unknown",
 		"stream":      "idle",
@@ -220,7 +231,10 @@ func main() {
 		go func() {
 			defer wg.Done()
 			for raw := range incoming {
+				start := time.Now()
 				frame, ok := processing.ProcessRawFrame(raw)
+				metrics.processCount.Add(1)
+				metrics.processNanos.Add(uint64(time.Since(start).Nanoseconds()))
 				if !ok {
 					continue
 				}
@@ -256,7 +270,7 @@ func main() {
 				return
 			case frame, ok := <-processed:
 				if !ok {
-					flushSnapshot(&metrics, uiMessages, agg)
+					flushSnapshot(&metrics, uiMessages, agg, &latestSnapshotMu, &latestSnapshot, &hasSnapshot)
 					return
 				}
 				if agg.AddFrame(frame) {
@@ -270,7 +284,11 @@ func main() {
 					statusMu.Lock()
 					status["filewriter"] = "writing"
 					statusMu.Unlock()
-					if err := output.WriteSeries(cfg.OutputDir, ts, cfg.GridX, cfg.GridY, agg.Snapshot()); err != nil {
+					writeStart := time.Now()
+					err := output.WriteSeries(cfg.OutputDir, ts, cfg.GridX, cfg.GridY, agg.Snapshot())
+					metrics.writeCount.Add(1)
+					metrics.writeNanos.Add(uint64(time.Since(writeStart).Nanoseconds()))
+					if err != nil {
 						metrics.outputWriteError.Add(1)
 						log.Printf("output write failed: %v", err)
 						statusMu.Lock()
@@ -287,7 +305,7 @@ func main() {
 					agg.Reset()
 				}
 			case <-ticker.C:
-				flushSnapshot(&metrics, uiMessages, agg)
+				flushSnapshot(&metrics, uiMessages, agg, &latestSnapshotMu, &latestSnapshot, &hasSnapshot)
 			}
 		}
 	}()
@@ -338,16 +356,28 @@ func main() {
 		}
 		metricsPayload := metrics.snapshot()
 		metricsPayload["ingest_decode_failures_total"] = ingest.DecodeFailures()
+		decodeCount, decodeNanos := ingest.DecodeTiming()
+		metricsPayload["ingest_decode_total"] = decodeCount
+		metricsPayload["ingest_decode_nanos_total"] = decodeNanos
 		copy["metrics"] = metricsPayload
 		return copy
 	}
 
-	if err := server.Run(ctx, cfg, uiMessages, statusFn); err != nil {
+	snapshotFn := func() any {
+		latestSnapshotMu.Lock()
+		defer latestSnapshotMu.Unlock()
+		if !hasSnapshot {
+			return nil
+		}
+		return latestSnapshot
+	}
+
+	if err := server.Run(ctx, cfg, uiMessages, statusFn, snapshotFn); err != nil {
 		log.Printf("server stopped: %v", err)
 	}
 }
 
-func flushSnapshot(metrics *metrics, uiMessages chan any, agg *processing.Aggregator) {
+func flushSnapshot(metrics *metrics, uiMessages chan any, agg *processing.Aggregator, latestSnapshotMu *sync.Mutex, latestSnapshot *types.UISnapshot, hasSnapshot *bool) {
 	snapshotData := agg.SnapshotCopy()
 	if len(snapshotData) == 0 {
 		return
@@ -356,6 +386,10 @@ func flushSnapshot(metrics *metrics, uiMessages chan any, agg *processing.Aggreg
 		Type: "snapshot",
 		Data: snapshotData,
 	}
+	latestSnapshotMu.Lock()
+	*latestSnapshot = message
+	*hasSnapshot = true
+	latestSnapshotMu.Unlock()
 	select {
 	case uiMessages <- message:
 		metrics.framesBroadcast.Add(1)

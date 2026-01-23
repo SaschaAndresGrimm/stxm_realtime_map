@@ -400,6 +400,9 @@ function applySnapshot(threshold, payload) {
 const ws = new WebSocket(`ws://${location.host}/ws`);
 ws.addEventListener("open", () => {
   statusEl.textContent = "Connected";
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "snapshot_request" }));
+  }
 });
 ws.addEventListener("close", () => {
   statusEl.textContent = "Disconnected";
@@ -427,6 +430,9 @@ ws.addEventListener("message", (event) => {
     });
     scheduleHistogramUpdate();
     scheduleLayoutRefresh();
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "snapshot_request" }));
+    }
     return;
   }
 
