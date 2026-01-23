@@ -194,7 +194,7 @@ func main() {
 			if msg.Type != "image" {
 				metrics.metaMessages.Add(1)
 				if msg.Type == "start" {
-					log.Printf("start meta: %s", mustJSON(output.NormalizeJSONValue(msg.Meta)))
+					log.Printf("start meta:\n%s", mustPrettyJSON(output.NormalizeJSONValue(msg.Meta)))
 				}
 				runMu.Lock()
 				if runTimestamp == "" {
@@ -401,8 +401,8 @@ func flushSnapshot(metrics *metrics, uiMessages chan any, agg *processing.Aggreg
 	}
 }
 
-func mustJSON(value any) string {
-	data, err := json.Marshal(value)
+func mustPrettyJSON(value any) string {
+	data, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
 		return fmt.Sprintf(`{"error":"%v"}`, err)
 	}
