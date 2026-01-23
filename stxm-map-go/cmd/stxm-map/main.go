@@ -211,6 +211,8 @@ func main() {
 						default:
 						}
 					}
+				} else if msg.Type == "end" {
+					log.Printf("end meta:\n%s", mustPrettyJSON(output.NormalizeJSONValue(msg.Meta)))
 				}
 				runMu.Lock()
 				if runTimestamp == "" {
