@@ -19,63 +19,83 @@
       <div class="panel-header">
         <h2>Controls</h2>
       </div>
-      <div class="panel-section">
-        <label class="toggle">
-          <span>Color scheme</span>
-          <select id="color-scheme">
-            <option value="blue-yellow-red" selected>Blue-Yellow-Red</option>
-            <option value="gray">Grayscale</option>
-            <option value="heat">Heat</option>
-            <option value="viridis">Viridis</option>
-            <option value="albula-hdr">Albula HDR</option>
-          </select>
-        </label>
-        <label class="toggle">
-          <input type="checkbox" id="autoscale" checked />
-          <span>Auto scale</span>
-        </label>
-        <div class="histogram">
-          <div class="histogram-title">Histogram</div>
-          <div class="histogram-axis">
-            <span class="histogram-y-label">Count</span>
-            <div class="histogram-canvas-wrap">
-              <canvas id="histogram-canvas" width="240" height="80"></canvas>
-              <span class="histogram-x-label">Value</span>
+      <div class="panel-tabs" role="tablist" aria-label="Control tabs">
+        <button class="panel-tab-btn is-active" data-panel-tab="ui" role="tab" aria-selected="true">UI Settings</button>
+        <button class="panel-tab-btn" data-panel-tab="detector" role="tab" aria-selected="false">Detector</button>
+      </div>
+      <div class="panel-tab" data-panel-page="ui">
+        <div class="panel-section">
+          <label class="toggle">
+            <span>Color scheme</span>
+            <select id="color-scheme">
+              <option value="blue-yellow-red" selected>Blue-Yellow-Red</option>
+              <option value="gray">Grayscale</option>
+              <option value="heat">Heat</option>
+              <option value="viridis">Viridis</option>
+              <option value="albula-hdr">Albula HDR</option>
+            </select>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" id="autoscale" checked />
+            <span>Auto scale</span>
+          </label>
+          <div class="histogram">
+            <div class="histogram-title">Histogram</div>
+            <div class="histogram-axis">
+              <span class="histogram-y-label">Count</span>
+              <div class="histogram-canvas-wrap">
+                <canvas id="histogram-canvas" width="240" height="80"></canvas>
+                <span class="histogram-x-label">Value</span>
+              </div>
+            </div>
+            <label class="toggle histogram-toggle">
+              <input type="checkbox" id="histogram-log" checked />
+              <span>Log scale</span>
+            </label>
+          </div>
+          <div class="contrast-controls">
+            <div class="contrast-row">
+              <span>Min</span>
+              <input id="contrast-min" type="range" min="0" max="255" step="1" value="0" />
+              <span id="contrast-min-value">0</span>
+            </div>
+            <div class="contrast-row">
+              <span>Max</span>
+              <input id="contrast-max" type="range" min="0" max="255" step="1" value="255" />
+              <span id="contrast-max-value">255</span>
             </div>
           </div>
-          <label class="toggle histogram-toggle">
-            <input type="checkbox" id="histogram-log" checked />
-            <span>Log scale</span>
+          <label class="toggle">
+            <input type="checkbox" id="sync-views" checked />
+            <span>Sync views</span>
           </label>
         </div>
-        <div class="contrast-controls">
-          <div class="contrast-row">
-            <span>Min</span>
-            <input id="contrast-min" type="range" min="0" max="255" step="1" value="0" />
-            <span id="contrast-min-value">0</span>
+        <div class="panel-section">
+          <div class="zoom-controls">
+            <button id="zoom-out" class="export-btn">-</button>
+            <span id="zoom-level">1.0x</span>
+            <button id="zoom-in" class="export-btn">+</button>
           </div>
-          <div class="contrast-row">
-            <span>Max</span>
-            <input id="contrast-max" type="range" min="0" max="255" step="1" value="255" />
-            <span id="contrast-max-value">255</span>
+          <input id="zoom-slider" type="range" min="0.5" max="8" step="0.1" value="1" />
+          <button id="zoom-reset" class="export-btn">Reset</button>
+        </div>
+        <div class="panel-section">
+          <button id="export-snapshot" class="export-btn export-wide">Export Snapshot</button>
+        </div>
+      </div>
+      <div class="panel-tab is-hidden" data-panel-page="detector">
+        <div class="panel-section">
+          <div class="panel-hint">
+            Detector commands are sent via the SIMPLON API.
           </div>
+          <div class="detector-controls">
+            <button class="export-btn detector-btn" data-detector-cmd="initialize">Initialize</button>
+            <button class="export-btn detector-btn" data-detector-cmd="arm">Arm</button>
+            <button class="export-btn detector-btn" data-detector-cmd="trigger">Trigger</button>
+            <button class="export-btn detector-btn" data-detector-cmd="disarm">Disarm</button>
+          </div>
+          <div id="detector-command-status" class="panel-hint">No command sent yet.</div>
         </div>
-        <label class="toggle">
-          <input type="checkbox" id="sync-views" checked />
-          <span>Sync views</span>
-        </label>
-      </div>
-      <div class="panel-section">
-        <div class="zoom-controls">
-          <button id="zoom-out" class="export-btn">-</button>
-          <span id="zoom-level">1.0x</span>
-          <button id="zoom-in" class="export-btn">+</button>
-        </div>
-        <input id="zoom-slider" type="range" min="0.5" max="8" step="0.1" value="1" />
-        <button id="zoom-reset" class="export-btn">Reset</button>
-      </div>
-      <div class="panel-section">
-        <button id="export-snapshot" class="export-btn export-wide">Export Snapshot</button>
       </div>
     </aside>
     <main>

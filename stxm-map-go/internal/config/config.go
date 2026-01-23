@@ -7,6 +7,7 @@ type AppConfig struct {
 	Endpoint            string
 	SimplonPollInterval time.Duration
 	SimplonAPIVersion   string
+	SimplonBaseURL      string
 	Workers             int
 	GridX               int
 	GridY               int

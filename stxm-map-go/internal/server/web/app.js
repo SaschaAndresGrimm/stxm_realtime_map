@@ -12,6 +12,10 @@ const syncViewsToggle = document.getElementById("sync-views");
 const exportSnapshotBtn = document.getElementById("export-snapshot");
 const controlPanel = document.getElementById("control-panel");
 const panelHandle = document.getElementById("panel-handle");
+const panelTabButtons = document.querySelectorAll("[data-panel-tab]");
+const panelTabPages = document.querySelectorAll("[data-panel-page]");
+const detectorButtons = document.querySelectorAll("[data-detector-cmd]");
+const detectorCommandStatus = document.getElementById("detector-command-status");
 const colorSchemeSelect = document.getElementById("color-scheme");
 const contrastMin = document.getElementById("contrast-min");
 const contrastMax = document.getElementById("contrast-max");
@@ -44,6 +48,49 @@ let manualMin = 0;
 let manualMax = 255;
 const mobileQuery = window.matchMedia("(max-width: 900px)");
 const isMobile = () => mobileQuery.matches;
+
+function activatePanelTab(name) {
+  panelTabButtons.forEach((btn) => {
+    const active = btn.dataset.panelTab === name;
+    btn.classList.toggle("is-active", active);
+    btn.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  panelTabPages.forEach((page) => {
+    const active = page.dataset.panelPage === name;
+    page.classList.toggle("is-hidden", !active);
+  });
+  localStorage.setItem("panelTab", name);
+}
+
+const storedTab = localStorage.getItem("panelTab");
+if (storedTab) {
+  activatePanelTab(storedTab);
+}
+
+panelTabButtons.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    activatePanelTab(btn.dataset.panelTab);
+  });
+});
+
+detectorButtons.forEach((btn) => {
+  btn.addEventListener("click", async () => {
+    const cmd = btn.dataset.detectorCmd;
+    if (!cmd) return;
+    detectorCommandStatus.textContent = `Sending ${cmd}...`;
+    try {
+      const res = await fetch(`/detector/command/${cmd}`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (data.ok) {
+        detectorCommandStatus.textContent = `${cmd} ok`;
+      } else {
+        detectorCommandStatus.textContent = `${cmd} failed (${data.status || res.status})`;
+      }
+    } catch (err) {
+      detectorCommandStatus.textContent = `${cmd} failed`;
+    }
+  });
+});
 let histogramThreshold = "";
 let histogramDirty = false;
 let histogramDrag = null;
@@ -726,7 +773,11 @@ controlPanel?.addEventListener("change", () => {
 
 controlPanel?.addEventListener("click", (event) => {
   const target = event.target;
-  if (target && target.closest("button")) {
+  if (!target) return;
+  if (target.closest("[data-panel-tab]")) {
+    return;
+  }
+  if (target.closest("button")) {
     setTimeout(closePanelIfMobile, 0);
   }
 });

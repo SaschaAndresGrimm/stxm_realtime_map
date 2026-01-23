@@ -46,6 +46,74 @@ func Poll(ctx context.Context, baseURL string, apiVersion string, interval time.
 	}
 }
 
+func Command(ctx context.Context, baseURL string, apiVersion string, command string) (int, string) {
+	if baseURL == "" {
+		return http.StatusBadRequest, "missing base url"
+	}
+	baseURL = strings.TrimRight(baseURL, "/")
+	apiVersion = strings.Trim(apiVersion, "/")
+
+	paths := make([]string, 0, 3)
+	if apiVersion != "" {
+		paths = append(paths, baseURL+"/detector/api/"+apiVersion+"/command/"+command)
+		paths = append(paths, baseURL+"/api/"+apiVersion+"/detector/command/"+command)
+	}
+	paths = append(paths, baseURL+"/detector/command/"+command)
+
+	client := &http.Client{Timeout: 2 * time.Second}
+	for _, path := range paths {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPut, path, nil)
+		if err != nil {
+			continue
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			continue
+		}
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
+			return resp.StatusCode, strings.TrimSpace(string(body))
+		}
+	}
+	return http.StatusNotFound, "not found"
+}
+
+func CommandAsync(baseURL string, apiVersion string, command string) error {
+	if baseURL == "" {
+		return fmt.Errorf("missing base url")
+	}
+	baseURL = strings.TrimRight(baseURL, "/")
+	apiVersion = strings.Trim(apiVersion, "/")
+
+	paths := make([]string, 0, 3)
+	if apiVersion != "" {
+		paths = append(paths, baseURL+"/detector/api/"+apiVersion+"/command/"+command)
+		paths = append(paths, baseURL+"/api/"+apiVersion+"/detector/command/"+command)
+	}
+	paths = append(paths, baseURL+"/detector/command/"+command)
+
+	client := &http.Client{Timeout: 2 * time.Second}
+	go func() {
+		for _, path := range paths {
+			req, err := http.NewRequest(http.MethodPut, path, nil)
+			if err != nil {
+				continue
+			}
+			resp, err := client.Do(req)
+			if err != nil {
+				continue
+			}
+			_, _ = io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+			_ = resp.Body.Close()
+			if resp.StatusCode != http.StatusNotFound {
+				return
+			}
+		}
+	}()
+	return nil
+}
+
 func fetchStatus(ctx context.Context, client *http.Client, endpoint string) string {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {

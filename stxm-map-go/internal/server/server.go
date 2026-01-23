@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"io/fs"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
 
 	"stxm-map-go/internal/config"
+	"stxm-map-go/internal/simplon"
 )
 
 //go:embed web/*
@@ -55,6 +57,7 @@ func Run(ctx context.Context, cfg config.AppConfig, messages <-chan any, statusF
 	mux.HandleFunc("/healthz", srv.handleHealth)
 	mux.HandleFunc("/config", srv.handleConfig)
 	mux.HandleFunc("/status", srv.handleStatus)
+	mux.HandleFunc("/detector/command/", srv.handleDetectorCommand)
 
 	httpServer := &http.Server{
 		Addr:              ":" + itoa(cfg.Port),
@@ -176,6 +179,49 @@ func (s *Server) handleStatus(w http.ResponseWriter, _ *http.Request) {
 		payload["ws_clients"] = s.clientCount()
 	}
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func (s *Server) handleDetectorCommand(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	cmd := strings.TrimPrefix(r.URL.Path, "/detector/command/")
+	switch cmd {
+	case "initialize", "arm", "trigger", "disarm":
+	default:
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": "unsupported command",
+		})
+		return
+	}
+	if s.cfg.SimplonBaseURL == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": "simplon base url not configured",
+		})
+		return
+	}
+	if err := simplon.CommandAsync(s.cfg.SimplonBaseURL, s.cfg.SimplonAPIVersion, cmd); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":      false,
+			"status":  http.StatusBadRequest,
+			"command": cmd,
+			"error":   err.Error(),
+		})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"ok":      true,
+		"status":  http.StatusAccepted,
+		"command": cmd,
+	})
 }
 
 func (s *Server) broadcast(ctx context.Context, messages <-chan any) {

@@ -90,6 +90,7 @@ func main() {
 		Endpoint:            resolvedEndpoint,
 		SimplonPollInterval: *simplonInterval,
 		SimplonAPIVersion:   *apiVersion,
+		SimplonBaseURL:      simplonBaseURL,
 		Workers:             *workers,
 		GridX:               *gridX,
 		GridY:               *gridY,
