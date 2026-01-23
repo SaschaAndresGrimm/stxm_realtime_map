@@ -16,6 +16,7 @@ Open `http://localhost:8888` in your browser.
 - Supports both simulator and ZMQ/CBOR ingest; use `--endpoint` or `--detector-ip` to enable ingest.
 - `--detector-ip` sets the detector IP for both ZMQ ingest and SIMPLON status polling.
 - `--api-port` sets the SIMPLON API port (default: 80).
+- `--simplon-api-version` sets the SIMPLON API version used for status polling (default: 1.8.0).
 - `--zmq-port` sets the ZMQ port (default: 31001).
 - `--endpoint` is used for ZMQ ingest when `--detector-ip` is not set.
 - `--simplon-interval` sets the polling interval for detector status (default: 1s).

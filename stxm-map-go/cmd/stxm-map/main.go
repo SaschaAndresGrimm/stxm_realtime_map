@@ -60,6 +60,7 @@ func main() {
 		port            = flag.Int("port", 8888, "HTTP port for the web UI")
 		detectorIP      = flag.String("detector-ip", "", "Detector IP used for ZMQ and SIMPLON API endpoints")
 		apiPort         = flag.Int("api-port", 80, "SIMPLON API port")
+		apiVersion      = flag.String("simplon-api-version", "1.8.0", "SIMPLON API version")
 		zmqPort         = flag.Int("zmq-port", 31001, "ZMQ port")
 		endpoint        = flag.String("endpoint", "tcp://localhost:31001", "ZMQ endpoint (used when detector-ip is empty)")
 		simplonInterval = flag.Duration("simplon-interval", 1*time.Second, "Polling interval for SIMPLON status")
@@ -88,6 +89,7 @@ func main() {
 		Port:                *port,
 		Endpoint:            resolvedEndpoint,
 		SimplonPollInterval: *simplonInterval,
+		SimplonAPIVersion:   *apiVersion,
 		Workers:             *workers,
 		GridX:               *gridX,
 		GridY:               *gridY,
@@ -151,6 +153,13 @@ func main() {
 	var hasSnapshot bool
 	var thresholdsMu sync.Mutex
 	currentThresholds := append([]string(nil), cfg.PlotThreshold...)
+	var runMuStatus sync.Mutex
+	var runStartMeta map[string]any
+	var runEndMeta map[string]any
+	var framesExpected int
+	var framesReceived int
+	var imageStatsMu sync.Mutex
+	var imageStats map[string]map[string]float64
 	status := map[string]any{
 		"detector":    "unknown",
 		"stream":      "idle",
@@ -176,7 +185,7 @@ func main() {
 	}
 
 	if !cfg.Debug && simplonBaseURL != "" {
-		go simplon.Poll(ctx, simplonBaseURL, cfg.SimplonPollInterval, func(update simplon.Status) {
+		go simplon.Poll(ctx, simplonBaseURL, cfg.SimplonAPIVersion, cfg.SimplonPollInterval, func(update simplon.Status) {
 			statusMu.Lock()
 			status["detector"] = update.Detector
 			status["stream"] = update.Stream
@@ -196,7 +205,20 @@ func main() {
 			if msg.Type != "image" {
 				metrics.metaMessages.Add(1)
 				if msg.Type == "start" {
-					log.Printf("start meta:\n%s", mustPrettyJSON(output.NormalizeJSONValue(msg.Meta)))
+					normalized := output.NormalizeJSONValue(msg.Meta)
+					log.Printf("start meta:\n%s", mustPrettyJSON(normalized))
+					if metaMap, ok := normalized.(map[string]any); ok {
+						runMuStatus.Lock()
+						runStartMeta = metaMap
+						runEndMeta = nil
+						framesReceived = 0
+						if v, ok := metaMap["number_of_images"]; ok {
+							if n, err := toInt(v); err == nil {
+								framesExpected = n
+							}
+						}
+						runMuStatus.Unlock()
+					}
 					if channels := extractChannels(msg.Meta); len(channels) > 0 {
 						thresholdsMu.Lock()
 						currentThresholds = channels
@@ -212,7 +234,13 @@ func main() {
 						}
 					}
 				} else if msg.Type == "end" {
-					log.Printf("end meta:\n%s", mustPrettyJSON(output.NormalizeJSONValue(msg.Meta)))
+					normalized := output.NormalizeJSONValue(msg.Meta)
+					log.Printf("end meta:\n%s", mustPrettyJSON(normalized))
+					if metaMap, ok := normalized.(map[string]any); ok {
+						runMuStatus.Lock()
+						runEndMeta = metaMap
+						runMuStatus.Unlock()
+					}
 				}
 				runMu.Lock()
 				if runTimestamp == "" {
@@ -239,6 +267,9 @@ func main() {
 
 			metrics.imageMessages.Add(1)
 			frame := msg.Image
+			runMuStatus.Lock()
+			framesReceived++
+			runMuStatus.Unlock()
 			select {
 			case <-ctx.Done():
 				return
@@ -292,7 +323,7 @@ func main() {
 				return
 			case frame, ok := <-processed:
 				if !ok {
-					flushSnapshot(&metrics, uiMessages, agg, &latestSnapshotMu, &latestSnapshot, &hasSnapshot)
+					flushSnapshot(&metrics, uiMessages, agg, &latestSnapshotMu, &latestSnapshot, &hasSnapshot, &imageStatsMu, &imageStats)
 					return
 				}
 				if agg.AddFrame(frame) {
@@ -327,7 +358,7 @@ func main() {
 					agg.Reset()
 				}
 			case <-ticker.C:
-				flushSnapshot(&metrics, uiMessages, agg, &latestSnapshotMu, &latestSnapshot, &hasSnapshot)
+				flushSnapshot(&metrics, uiMessages, agg, &latestSnapshotMu, &latestSnapshot, &hasSnapshot, &imageStatsMu, &imageStats)
 			}
 		}
 	}()
@@ -382,6 +413,21 @@ func main() {
 		metricsPayload["ingest_decode_total"] = decodeCount
 		metricsPayload["ingest_decode_nanos_total"] = decodeNanos
 		copy["metrics"] = metricsPayload
+		runMuStatus.Lock()
+		if runStartMeta != nil {
+			copy["run_start"] = runStartMeta
+		}
+		if runEndMeta != nil {
+			copy["run_end"] = runEndMeta
+		}
+		copy["frames_expected"] = framesExpected
+		copy["frames_received"] = framesReceived
+		runMuStatus.Unlock()
+		imageStatsMu.Lock()
+		if imageStats != nil {
+			copy["image_stats"] = imageStats
+		}
+		imageStatsMu.Unlock()
 		return copy
 	}
 
@@ -410,10 +456,52 @@ func main() {
 	}
 }
 
-func flushSnapshot(metrics *metrics, uiMessages chan any, agg *processing.Aggregator, latestSnapshotMu *sync.Mutex, latestSnapshot *types.UISnapshot, hasSnapshot *bool) {
+func flushSnapshot(metrics *metrics, uiMessages chan any, agg *processing.Aggregator, latestSnapshotMu *sync.Mutex, latestSnapshot *types.UISnapshot, hasSnapshot *bool, imageStatsMu *sync.Mutex, imageStats *map[string]map[string]float64) {
 	snapshotData := agg.SnapshotCopy()
 	if len(snapshotData) == 0 {
 		return
+	}
+	if imageStatsMu != nil && imageStats != nil {
+		stats := make(map[string]map[string]float64, len(snapshotData))
+		for threshold, payload := range snapshotData {
+			minVal := float64(0)
+			maxVal := float64(0)
+			sum := float64(0)
+			count := 0.0
+			initialized := false
+			for i, value := range payload.Values {
+				if len(payload.Mask) > 0 && !payload.Mask[i] {
+					continue
+				}
+				v := float64(value)
+				if !initialized {
+					minVal = v
+					maxVal = v
+					initialized = true
+				} else {
+					if v < minVal {
+						minVal = v
+					}
+					if v > maxVal {
+						maxVal = v
+					}
+				}
+				sum += v
+				count++
+			}
+			mean := 0.0
+			if count > 0 {
+				mean = sum / count
+			}
+			stats[threshold] = map[string]float64{
+				"min":  minVal,
+				"max":  maxVal,
+				"mean": mean,
+			}
+		}
+		imageStatsMu.Lock()
+		*imageStats = stats
+		imageStatsMu.Unlock()
 	}
 	message := types.UISnapshot{
 		Type: "snapshot",
@@ -461,4 +549,23 @@ func extractChannels(meta map[string]any) []string {
 		}
 	}
 	return out
+}
+
+func toInt(v any) (int, error) {
+	switch n := v.(type) {
+	case int:
+		return n, nil
+	case int64:
+		return int(n), nil
+	case uint64:
+		return int(n), nil
+	case uint32:
+		return int(n), nil
+	case float64:
+		return int(n), nil
+	case float32:
+		return int(n), nil
+	default:
+		return 0, fmt.Errorf("unsupported int type %T", v)
+	}
 }

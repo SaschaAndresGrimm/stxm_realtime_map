@@ -17,11 +17,12 @@ type Status struct {
 	Monitor    string
 }
 
-func Poll(ctx context.Context, baseURL string, interval time.Duration, update func(Status)) {
+func Poll(ctx context.Context, baseURL string, apiVersion string, interval time.Duration, update func(Status)) {
 	if baseURL == "" || update == nil {
 		return
 	}
 	baseURL = strings.TrimRight(baseURL, "/")
+	apiVersion = strings.Trim(apiVersion, "/")
 	client := &http.Client{
 		Timeout: 900 * time.Millisecond,
 	}
@@ -30,10 +31,10 @@ func Poll(ctx context.Context, baseURL string, interval time.Duration, update fu
 
 	for {
 		status := Status{
-			Detector:   fetchStatus(ctx, client, baseURL+"/detector/api/1.8.0/status"),
-			Stream:     fetchStatus(ctx, client, baseURL+"/stream/api/1.8.0/status"),
-			Filewriter: fetchStatus(ctx, client, baseURL+"/filewriter/api/1.8.0/status"),
-			Monitor:    fetchStatus(ctx, client, baseURL+"/monitor/api/1.8.0/status"),
+			Detector:   fetchWithFallback(ctx, client, baseURL+"/detector", apiVersion),
+			Stream:     fetchWithFallback(ctx, client, baseURL+"/stream", apiVersion),
+			Filewriter: fetchWithFallback(ctx, client, baseURL+"/filewriter", apiVersion),
+			Monitor:    fetchWithFallback(ctx, client, baseURL+"/monitor", apiVersion),
 		}
 		update(status)
 
@@ -72,6 +73,27 @@ func fetchStatus(ctx context.Context, client *http.Client, endpoint string) stri
 		return "ok"
 	}
 	return state
+}
+
+func fetchWithFallback(ctx context.Context, client *http.Client, base string, apiVersion string) string {
+	apiVersion = strings.Trim(apiVersion, "/")
+	paths := make([]string, 0, 3)
+	if apiVersion != "" {
+		paths = append(paths, base+"/api/"+apiVersion+"/status/state")
+	}
+	paths = append(paths, base+"/status/state")
+	if apiVersion != "" {
+		paths = append(paths, base+"/api/"+apiVersion+"/status")
+	}
+	paths = append(paths, base+"/status")
+
+	for _, path := range paths {
+		status := fetchStatus(ctx, client, path)
+		if !strings.HasPrefix(status, "http_404") {
+			return status
+		}
+	}
+	return "http_404"
 }
 
 func extractState(payload []byte) (string, bool) {
