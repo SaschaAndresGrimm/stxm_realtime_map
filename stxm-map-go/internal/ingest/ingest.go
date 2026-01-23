@@ -177,7 +177,7 @@ func decodeMessage(msg []byte, logEvery int) (types.RawMessage, bool) {
 		decodeFailures.Add(1)
 		return types.RawMessage{}, false
 	}
-	startTime, err := toFloat(payload["start_time"])
+	startTime, err := parseTimeValue(payload["start_time"])
 	if err != nil {
 		logEveryN(logEvery, "ingest invalid start_time: %v", err)
 		decodeFailures.Add(1)
@@ -221,8 +221,35 @@ func toFloat(v any) (float64, error) {
 		return float64(n), nil
 	case int64:
 		return float64(n), nil
+	case uint64:
+		return float64(n), nil
+	case uint32:
+		return float64(n), nil
 	default:
 		return 0, fmt.Errorf("unsupported float type %T", v)
+	}
+}
+
+func parseTimeValue(v any) (float64, error) {
+	if v == nil {
+		return 0, errors.New("missing time value")
+	}
+	switch t := v.(type) {
+	case []any:
+		if len(t) != 2 {
+			return 0, fmt.Errorf("invalid time array length %d", len(t))
+		}
+		sec, err := toFloat(t[0])
+		if err != nil {
+			return 0, err
+		}
+		nsec, err := toFloat(t[1])
+		if err != nil {
+			return 0, err
+		}
+		return sec + nsec*1e-9, nil
+	default:
+		return toFloat(t)
 	}
 }
 

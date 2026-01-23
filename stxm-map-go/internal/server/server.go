@@ -24,6 +24,7 @@ type Server struct {
 	cfg        config.AppConfig
 	statusFn   func() map[string]any
 	snapshotFn func() any
+	configFn   func() map[string]any
 }
 
 const (
@@ -32,7 +33,7 @@ const (
 	pingEvery = (pongWait * 9) / 10
 )
 
-func Run(ctx context.Context, cfg config.AppConfig, messages <-chan any, statusFn func() map[string]any, snapshotFn func() any) error {
+func Run(ctx context.Context, cfg config.AppConfig, messages <-chan any, statusFn func() map[string]any, snapshotFn func() any, configFn func() map[string]any) error {
 	srv := &Server{
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool { return true },
@@ -41,6 +42,7 @@ func Run(ctx context.Context, cfg config.AppConfig, messages <-chan any, statusF
 		cfg:        cfg,
 		statusFn:   statusFn,
 		snapshotFn: snapshotFn,
+		configFn:   configFn,
 	}
 
 	sub, err := fs.Sub(webFS, "web")
@@ -88,12 +90,18 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	s.clients[conn] = writeMu
 	s.mu.Unlock()
 
-	_ = s.writeJSON(conn, writeMu, map[string]any{
+	payload := map[string]any{
 		"type":       "config",
 		"grid_x":     s.cfg.GridX,
 		"grid_y":     s.cfg.GridY,
 		"thresholds": s.cfg.PlotThreshold,
-	})
+	}
+	if s.configFn != nil {
+		if cfg := s.configFn(); cfg != nil {
+			payload = cfg
+		}
+	}
+	_ = s.writeJSON(conn, writeMu, payload)
 
 	go func() {
 		done := make(chan struct{})

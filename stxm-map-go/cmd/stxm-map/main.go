@@ -149,6 +149,8 @@ func main() {
 	var latestSnapshotMu sync.Mutex
 	var latestSnapshot types.UISnapshot
 	var hasSnapshot bool
+	var thresholdsMu sync.Mutex
+	currentThresholds := append([]string(nil), cfg.PlotThreshold...)
 	status := map[string]any{
 		"detector":    "unknown",
 		"stream":      "idle",
@@ -195,6 +197,20 @@ func main() {
 				metrics.metaMessages.Add(1)
 				if msg.Type == "start" {
 					log.Printf("start meta:\n%s", mustPrettyJSON(output.NormalizeJSONValue(msg.Meta)))
+					if channels := extractChannels(msg.Meta); len(channels) > 0 {
+						thresholdsMu.Lock()
+						currentThresholds = channels
+						thresholdsMu.Unlock()
+						select {
+						case uiMessages <- map[string]any{
+							"type":       "config",
+							"grid_x":     cfg.GridX,
+							"grid_y":     cfg.GridY,
+							"thresholds": channels,
+						}:
+						default:
+						}
+					}
 				}
 				runMu.Lock()
 				if runTimestamp == "" {
@@ -376,7 +392,18 @@ func main() {
 		return latestSnapshot
 	}
 
-	if err := server.Run(ctx, cfg, uiMessages, statusFn, snapshotFn); err != nil {
+	configFn := func() map[string]any {
+		thresholdsMu.Lock()
+		defer thresholdsMu.Unlock()
+		return map[string]any{
+			"type":       "config",
+			"grid_x":     cfg.GridX,
+			"grid_y":     cfg.GridY,
+			"thresholds": append([]string(nil), currentThresholds...),
+		}
+	}
+
+	if err := server.Run(ctx, cfg, uiMessages, statusFn, snapshotFn, configFn); err != nil {
 		log.Printf("server stopped: %v", err)
 	}
 }
@@ -407,4 +434,29 @@ func mustPrettyJSON(value any) string {
 		return fmt.Sprintf(`{"error":"%v"}`, err)
 	}
 	return string(data)
+}
+
+func extractChannels(meta map[string]any) []string {
+	if meta == nil {
+		return nil
+	}
+	norm, ok := output.NormalizeJSONValue(meta).(map[string]any)
+	if !ok {
+		return nil
+	}
+	raw, ok := norm["channels"]
+	if !ok {
+		return nil
+	}
+	list, ok := raw.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(list))
+	for _, item := range list {
+		if s, ok := item.(string); ok && s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }
