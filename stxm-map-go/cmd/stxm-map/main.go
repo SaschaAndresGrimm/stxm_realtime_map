@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -192,6 +193,9 @@ func main() {
 			statusMu.Unlock()
 			if msg.Type != "image" {
 				metrics.metaMessages.Add(1)
+				if msg.Type == "start" {
+					log.Printf("start meta: %s", mustJSON(output.NormalizeJSONValue(msg.Meta)))
+				}
 				runMu.Lock()
 				if runTimestamp == "" {
 					runTimestamp = processing.Timestamp()
@@ -395,4 +399,12 @@ func flushSnapshot(metrics *metrics, uiMessages chan any, agg *processing.Aggreg
 		metrics.framesBroadcast.Add(1)
 	default:
 	}
+}
+
+func mustJSON(value any) string {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Sprintf(`{"error":"%v"}`, err)
+	}
+	return string(data)
 }

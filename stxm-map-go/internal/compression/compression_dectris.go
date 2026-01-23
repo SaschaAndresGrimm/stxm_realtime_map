@@ -3,7 +3,7 @@
 package compression
 
 /*
-#cgo CFLAGS: -I${SRCDIR}/dectris/src -I${SRCDIR}/dectris/third_party/bitshuffle/src -I${SRCDIR}/dectris/third_party/lz4/lib
+#cgo CFLAGS: -Wno-deprecated-declarations -I${SRCDIR}/dectris -I${SRCDIR}/dectris/src -I${SRCDIR}/dectris/third_party -I${SRCDIR}/dectris/third_party/bitshuffle/src -I${SRCDIR}/dectris/third_party/lz4/lib
 #include "dectris/src/compression.h"
 #include "dectris/src/compression.c"
 #include "dectris/third_party/bitshuffle/src/bitshuffle.c"

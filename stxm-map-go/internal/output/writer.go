@@ -61,7 +61,37 @@ func WriteMetadata(outputDir, runTimestamp, kind string, meta map[string]any) er
 	}
 	defer f.Close()
 
+	normalized := NormalizeJSONValue(meta)
 	encoder := json.NewEncoder(f)
 	encoder.SetIndent("", "  ")
-	return encoder.Encode(meta)
+	return encoder.Encode(normalized)
+}
+
+func NormalizeJSONValue(value any) any {
+	switch v := value.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(v))
+		for key, val := range v {
+			out[key] = NormalizeJSONValue(val)
+		}
+		return out
+	case map[any]any:
+		out := make(map[string]any, len(v))
+		for key, val := range v {
+			ks, ok := key.(string)
+			if !ok {
+				ks = fmt.Sprintf("%v", key)
+			}
+			out[ks] = NormalizeJSONValue(val)
+		}
+		return out
+	case []any:
+		out := make([]any, len(v))
+		for i, val := range v {
+			out[i] = NormalizeJSONValue(val)
+		}
+		return out
+	default:
+		return value
+	}
 }
