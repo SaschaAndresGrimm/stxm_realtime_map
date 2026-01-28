@@ -17,7 +17,7 @@ import (
 	"stxm-map-go/internal/simplon"
 )
 
-//go:embed web/*
+//go:embed web/* web/assets/*
 var webFS embed.FS
 
 type Server struct {
