@@ -14,14 +14,17 @@
       </div>
     </header>
     <div id="stale-banner" class="stale-banner hidden">No data (stream stalled)</div>
+    <div id="panel-handle" class="panel-handle" title="Drag to resize"></div>
     <aside id="control-panel" class="panel">
-      <div id="panel-handle" class="panel-handle" title="Drag to resize"></div>
-      <div class="panel-header">
-        <h2>Controls</h2>
-      </div>
-      <div class="panel-tabs" role="tablist" aria-label="Control tabs">
-        <button class="panel-tab-btn is-active" data-panel-tab="ui" role="tab" aria-selected="true">UI Settings</button>
-        <button class="panel-tab-btn" data-panel-tab="detector" role="tab" aria-selected="false">Detector</button>
+      <div class="panel-top">
+        <div class="panel-header">
+          <h2>Controls</h2>
+        </div>
+        <div class="panel-tabs" role="tablist" aria-label="Control tabs">
+          <button class="panel-tab-btn is-active" data-panel-tab="ui" role="tab" aria-selected="true">UI Settings</button>
+          <button class="panel-tab-btn" data-panel-tab="detector" role="tab" aria-selected="false">Detector</button>
+          <button class="panel-tab-btn" data-panel-tab="params" role="tab" aria-selected="false">Parameters</button>
+        </div>
       </div>
       <div class="panel-tab" data-panel-page="ui">
         <div class="panel-section">
@@ -95,6 +98,78 @@
             <button class="export-btn detector-btn" data-detector-cmd="disarm">Disarm</button>
           </div>
           <div id="detector-command-status" class="panel-hint">No command sent yet.</div>
+        </div>
+        <div class="panel-section">
+          <div class="panel-hint">Acquisition settings (SIMPLON config).</div>
+          <div class="detector-form">
+            <label>
+              <span>count_time (s)</span>
+              <input id="detector-count-time" type="number" step="0.000001" min="0" placeholder="0.0001" />
+            </label>
+            <label>
+              <span>frame_time (s)</span>
+              <input id="detector-frame-time" type="number" step="0.000001" min="0" placeholder="0.001" />
+            </label>
+            <label>
+              <span>trigger_mode</span>
+              <input id="detector-trigger-mode" type="text" placeholder="exts" />
+            </label>
+            <label>
+              <span>ntrigger</span>
+              <input id="detector-ntrigger" type="number" step="1" min="0" placeholder="1" />
+            </label>
+            <label>
+              <span>nimages</span>
+              <input id="detector-nimages" type="number" step="1" min="0" placeholder="8464" />
+            </label>
+          </div>
+          <div class="detector-actions">
+            <button id="detector-apply" class="export-btn export-wide">Apply settings</button>
+          </div>
+          <div id="detector-config-status" class="panel-hint">No settings applied yet.</div>
+        </div>
+      </div>
+      <div class="panel-tab is-hidden" data-panel-page="params">
+        <div class="panel-section param-toolbar">
+          <input id="param-search" class="param-search" type="search" placeholder="Search parameters (e.g., count_time, threshold/n/energy)" />
+          <div class="param-filter-row">
+            <label class="toggle">
+              <input type="checkbox" id="param-filter-config" checked />
+              <span>Config</span>
+            </label>
+            <label class="toggle">
+              <input type="checkbox" id="param-filter-status" checked />
+              <span>Status</span>
+            </label>
+            <label class="toggle">
+              <input type="checkbox" id="param-filter-command" checked />
+              <span>Command</span>
+            </label>
+            <label class="toggle">
+              <input type="checkbox" id="param-filter-images" checked />
+              <span>Images</span>
+            </label>
+            <label class="toggle">
+              <input type="checkbox" id="param-favorites-only" />
+              <span>Favorites only</span>
+            </label>
+          </div>
+          <div class="param-filter-actions">
+            <button id="param-expand" class="export-btn">Expand all</button>
+            <button id="param-collapse" class="export-btn">Collapse all</button>
+            <button id="param-favorites-edit" class="export-btn">Edit favorites</button>
+          </div>
+        </div>
+        <div id="param-favorites-editor" class="param-editor is-hidden">
+          <div class="panel-hint">One entry per line: module/section/parameter (e.g. detector/config/threshold/n/energy).</div>
+          <textarea id="param-favorites-text" rows="6" placeholder="detector/config/count_time"></textarea>
+          <div class="param-editor-actions">
+            <button id="param-favorites-save" class="export-btn">Save favorites</button>
+            <button id="param-favorites-cancel" class="export-btn">Cancel</button>
+          </div>
+        </div>
+        <div id="param-browser" class="param-browser">
+          <div class="panel-hint">Loading parameters…</div>
         </div>
       </div>
     </aside>

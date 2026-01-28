@@ -1,0 +1,880 @@
+{
+  "modules": [
+    {
+      "id": "detector",
+      "label": "Detector",
+      "sections": [
+        {
+          "id": "config",
+          "label": "Config",
+          "params": [
+            {
+              "name": "auto_sum_strict",
+              "access": "rw",
+              "type": "bool",
+              "remarks": "Enables (True) or disables (False) strict autosummation."
+            },
+            {
+              "name": "auto_summation",
+              "access": "rw",
+              "type": "bool",
+              "remarks": "Enables (True) or disables (False) autosummation. Should always be enabled."
+            },
+            {
+              "name": "beam_center_x",
+              "access": "rw",
+              "type": "float",
+              "remarks": "Beam position on detector in pixels."
+            },
+            {
+              "name": "beam_center_y",
+              "access": "rw",
+              "type": "float",
+              "remarks": "Beam position on detector in pixels."
+            },
+            {
+              "name": "binning_mode",
+              "access": "rw",
+              "type": "string",
+              "remarks": "Defines how the physical pixels are being binned. This changes the behavior of the readout! Available binning modes can be requested by sending a GET request to the key binning_mode."
+            },
+            {
+              "name": "bit_depth_image",
+              "access": "ro",
+              "type": "uint",
+              "remarks": "Bit depth of generated images."
+            },
+            {
+              "name": "bit_depth_readout",
+              "access": "ro",
+              "type": "uint",
+              "remarks": "Bit depth of the internal readout."
+            },
+            {
+              "name": "chi_axis",
+              "access": "rw",
+              "type": "float[]",
+              "remarks": "Chi rotation axis given as a threedimensional unit vector in a right-handed system."
+            },
+            {
+              "name": "chi_increment",
+              "access": "rw",
+              "type": "float",
+              "remarks": "Chi increment per frame."
+            },
+            {
+              "name": "chi_start",
+              "access": "rw",
+              "type": "float",
+              "remarks": "Chi start angle (start angle of the first frame) for an exposure series."
+            },
+            {
+              "name": "compression",
+              "access": "rw",
+              "type": "string",
+              "remarks": "Defines the compression algorithm used. Allowed options are lz4 and bslz4. Information #6 To ensure highest stability at full frame rates, DECTRIS strongly advises using bslz4 compression. For enabling and disabling compression see section 5.3.1 FileWriter Configuration compression_enabled)."
+            },
+            {
+              "name": "count_time",
+              "access": "rw",
+              "type": "float",
+              "remarks": "Exposure time per image."
+            },
+            {
+              "name": "counting_mode",
+              "access": "rw",
+              "type": "string",
+              "remarks": "Switch between normal (default) and retrigger counting mode. Other counting modes might be available for special applications."
+            },
+            {
+              "name": "countrate_correction_applied",
+              "access": "rw",
+              "type": "bool",
+              "remarks": "Enables (True) or disables (False) countrate correction. Should always be enabled. See the User Manual for details."
+            },
+            {
+              "name": "countrate_correction_count_cutoff",
+              "access": "ro",
+              "type": "uint",
+              "remarks": "Maximum number of possible counts per image after count rate correction. countrate_correction_table uint[] r Returns the countrate correction table."
+            },
+            {
+              "name": "data_collection_date",
+              "access": "ro",
+              "type": "string",
+              "remarks": "Date and time of data collection. This is the time when the ARM command was issued."
+            },
+            {
+              "name": "description",
+              "access": "ro",
+              "type": "string",
+              "remarks": "Detector model and type."
+            },
+            {
+              "name": "detector_distance",
+              "access": "rw",
+              "type": "float",
+              "remarks": "Sample to detector distance."
+            },
+            {
+              "name": "detector_number",
+              "access": "ro",
+              "type": "string",
+              "remarks": "Detector serial number."
+            },
+            {
+              "name": "detector_orientation",
+              "access": "rw",
+              "type": "float[]",
+              "remarks": "Together with detector_translation, this describes the coordinate transformation from detector coordinates to lab coordinates or the position of the detector in the lab."
+            },
+            {
+              "name": "detector_orientation_angle",
+              "access": "rw",
+              "type": "float",
+              "remarks": "Together with detector_orientation_axis, this describes the rotation part of the coordinate transformation from detector coordinates to lab coordinates or the position of the detector in the lab, the angle is given in degrees, a right-handed system is assumed."
+            },
+            {
+              "name": "detector_orientation_axis",
+              "access": "rw",
+              "type": "float[]",
+              "remarks": "Together with detector_orientation_angle, this describes the rotation part of the coordinate transformation from detector coordinates to lab coordinates or the position of the detector in the lab, a righthanded system is assumed."
+            },
+            {
+              "name": "detector_readout_time",
+              "access": "ro",
+              "type": "float",
+              "remarks": "Readout dead time between consecutive detector frames."
+            },
+            {
+              "name": "detector_translation",
+              "access": "rw",
+              "type": "float[]",
+              "remarks": "Together with the detector_orientation or detector_orientation_axis and detector_orientation_angle, this describes the coordinate transformation from detector coordinates to lab coordinates or the position of the detector in the lab."
+            },
+            {
+              "name": "eiger_fw_version",
+              "access": "ro",
+              "type": "string",
+              "remarks": "Returns the currently running app-detector version."
+            },
+            {
+              "name": "element",
+              "access": "rw",
+              "type": "string",
+              "remarks": "Sets parameter photon_energy to the Kalpha fluorescence radiation energy of an element."
+            },
+            {
+              "name": "extg_mode",
+              "access": "rw",
+              "type": "string",
+              "remarks": "Can only be used when in extg trigger mode. Values can either be single to make full use of both internal counters or double to acquire 32 bit images for high dynamic range measurements. See the User Manual for details."
+            },
+            {
+              "name": "flatfield",
+              "access": "rw",
+              "type": "float[][]",
+              "remarks": "Flatfield correction factors used for flatfield correction. Pixel data are multiplied with these factors for calculating flatfield corrected data. This key is mapped to threshold/1/flatfield."
+            },
+            {
+              "name": "flatfield_correction_applied",
+              "access": "rw",
+              "type": "bool",
+              "remarks": "Enables (True) or disables (False) flatfield correction. Should always be enabled."
+            },
+            {
+              "name": "flux_type",
+              "access": "rw",
+              "type": "string",
+              "remarks": "Type of flux, the flux value is set via flux_value. The following types can be set: \u2022 \u201dflux\u201d: Flux density incident on beam plane area in photons per second per unit area."
+            },
+            {
+              "name": "flux_value",
+              "access": "rw",
+              "type": "float",
+              "remarks": "Flux value of type flux_type. In case of a beam that varies in flux shot-to-shot, this is an array of values, one for each recorded shot. This information is required by the NXmx application definition 3 Information #9 Part of FileWriter metadata only if format is set to \u201dhdf5 nexus v2024.2 nxmx\u201d 2 3"
+            },
+            {
+              "name": "frame_count_time",
+              "access": "ro",
+              "type": "float",
+              "remarks": "Time interval between start of image acquisitions for sub-images when auto_summation is enabled"
+            },
+            {
+              "name": "frame_time",
+              "access": "rw",
+              "type": "float",
+              "remarks": "Time interval between start of image acquisitions. This defines the speed of data collection and is the inverse of the frame rate, the frequency of image acquisition. see https://manual.nexusformat.org/classes/applications/NXmx.html see https://manual.nexusformat.org/classes/applications/NXmx.html"
+            },
+            {
+              "name": "incident_energy",
+              "access": "rw",
+              "type": "float",
+              "remarks": "Energy of incident particles (e.g. X-rays) in eV."
+            },
+            {
+              "name": "instrument_name",
+              "access": "rw",
+              "type": "string",
+              "remarks": "Name of the instrument or beamline. Consistency with the controlled vocabulary beamline naming 4 is highly recommended. This information is required by the NXmx application definition 5 , an empty string will be interpreted as not set. Information #10 Part of FileWriter metadata only if format is set to \u201dhdf5 nexus v2024.2 nxmx\u201d 4 5"
+            },
+            {
+              "name": "kappa_axis",
+              "access": "rw",
+              "type": "float[]",
+              "remarks": "Kappa rotation axis given as a threedimensional unit vector in a right-handed system."
+            },
+            {
+              "name": "kappa_increment",
+              "access": "rw",
+              "type": "float",
+              "remarks": "Kappa increment per frame."
+            },
+            {
+              "name": "kappa_start",
+              "access": "rw",
+              "type": "float",
+              "remarks": "Kappa start angle (start angle of the first frame)."
+            },
+            {
+              "name": "mask_to_zero",
+              "access": "rw",
+              "type": "bool",
+              "remarks": "If set to True, pixels marked in the pixel_mask will be set to zero instead of the maximum representable value.This may be preferred by some analysis software. Default: False."
+            },
+            {
+              "name": "nexpi",
+              "access": "rw",
+              "type": "uint",
+              "remarks": "Number of exposures per image. Only applicable during extg trigger mode. See the User Manual for details."
+            },
+            {
+              "name": "nimages",
+              "access": "rw",
+              "type": "uint",
+              "remarks": "Number of images. See the User Manual for details."
+            },
+            {
+              "name": "ntrigger",
+              "access": "rw",
+              "type": "uint",
+              "remarks": "Number of triggers. See the User Manual for details."
+            },
+            {
+              "name": "number_of_excluded_pixels",
+              "access": "ro",
+              "type": "uint",
+              "remarks": "Total number of defective, disabled or inactive pixels."
+            },
+            {
+              "name": "omega_axis",
+              "access": "rw",
+              "type": "float[]",
+              "remarks": "Omega rotation axis given as a threedimensional unit vector in a right-handed system."
+            },
+            {
+              "name": "omega_increment",
+              "access": "rw",
+              "type": "float",
+              "remarks": "Omega increment per frame."
+            },
+            {
+              "name": "omega_start",
+              "access": "rw",
+              "type": "float",
+              "remarks": "Omega start angle (start angle of the first frame). see https://mmcif.wwpdb.org/dictionaries/mmcif_pdbx_v50.dic/Items/_diffrn_source.pdbx_synchrotron_beamline.html and https:// mmcif.wwpdb.org/dictionaries/mmcif_pdbx_v50.dic/Items/_diffrn_source.type.html see https://manual.nexusformat.org/classes/applications/NXmx.html"
+            },
+            {
+              "name": "phi_axis",
+              "access": "rw",
+              "type": "float[]",
+              "remarks": "Phi rotation axis given as a threedimensional unit vector in a right-handed system."
+            },
+            {
+              "name": "phi_increment",
+              "access": "rw",
+              "type": "float",
+              "remarks": "Phi increment per frame."
+            },
+            {
+              "name": "phi_start",
+              "access": "rw",
+              "type": "float",
+              "remarks": "Phi start angle (start angle of the first frame)."
+            },
+            {
+              "name": "photon_energy",
+              "access": "rw",
+              "type": "float",
+              "remarks": "Energy of incident X-rays."
+            },
+            {
+              "name": "pixel_format",
+              "access": "rw",
+              "type": "string",
+              "remarks": "Defines which data format is returned from the module. The maximum performance of the detector is depending on the selected pixel format 6 . Available pixel formats can be requested by sending a GET request to the key pixel_format. Caution #4 The pixel format can only be changed if the configured frame rate is within the allowed bounds of the new format."
+            },
+            {
+              "name": "pixel_mask",
+              "access": "rw",
+              "type": "uint[][]",
+              "remarks": "This key is mapped to threshold/1/pixel_mask. A bit mask that labels and classifies pixels which are either defective, inactive or exhibit non-standard behavior Bit 0: gap (pixel with no sensor) Bit 1: dead Bit 2: under responding Bit 3: over responding Bit 4: noisy Bit 5-31: -undefinedInformation #11 Please note that the actual integer value of a pixel in t..."
+            },
+            {
+              "name": "pixel_mask_applied",
+              "access": "rw",
+              "type": "bool",
+              "remarks": "Enables (True) or disables (False) applying the pixel mask on the acquired data. If True (default), pixels that have a corresponding bit set in the pixel_mask are flagged with (2\u2227 bit_depth_image)-1. If disabled, the pixel mask needs to be applied at the point of data processing."
+            },
+            {
+              "name": "roi_bit_depth",
+              "access": "rw",
+              "type": "uint",
+              "remarks": "Bit depth of generated images when using lines ROI 7 . 8 Bit required for max frame rate acquisitions!"
+            },
+            {
+              "name": "roi_mode",
+              "access": "rw",
+              "type": "string",
+              "remarks": "Selects the region of interest (ROI). ROI modes enable higher frame rates due to reduced readout area 8 . Available ROI modes can be requested by sending a GET request to the key roi_mode."
+            },
+            {
+              "name": "roi_y_size",
+              "access": "rw",
+              "type": "uint",
+              "remarks": "Defines total height (y size) of output image when using lines ROI 9"
+            },
+            {
+              "name": "sample_name",
+              "access": "rw",
+              "type": "string",
+              "remarks": "Name of the sample. This information is required by the NXmx application definition 10 , an empty string will be interpreted as not set. Information #12 Part of FileWriter metadata only if format is set to \u201dhdf5 nexus v2024.2 nxmx\u201d"
+            },
+            {
+              "name": "sensor_material",
+              "access": "ro",
+              "type": "string",
+              "remarks": "Material used for direct detection of X-rays in the sensor."
+            },
+            {
+              "name": "sensor_thickness",
+              "access": "ro",
+              "type": "float",
+              "remarks": "Thickness of the sensor material."
+            },
+            {
+              "name": "software_version",
+              "access": "ro",
+              "type": "string",
+              "remarks": "Software version used for data acquisition and correction. 7 Only available for certain detectors. Please refer to the User Manual and Technical specifications for further details."
+            },
+            {
+              "name": "source_name",
+              "access": "rw",
+              "type": "string",
+              "remarks": "Name of the neutron or x-ray storage ring/facility. Consistency with the naming in synchrotoron controlled vocabulary 11 is highly recommended. This information is required by the NXmx application definition 12 , an empty string will be interpreted as not set. Information #13 Part of FileWriter metadata only if format is set to \u201dhdf5 nexus v2024.2 nxmx\u201d"
+            },
+            {
+              "name": "test_image_mode",
+              "access": "rw",
+              "type": "string",
+              "remarks": "A \u201dnon-empty\u201d string value enables a test image readout and selects the type of the test image. The following test image modes are supported by all systems: \u201dvalue\u201d: A simulated readout which takes the value from test_image_value and includes it in every pixel of the image data."
+            },
+            {
+              "name": "test_image_value",
+              "access": "rw",
+              "type": "uint",
+              "remarks": "Value to configure some test image modes."
+            },
+            {
+              "name": "threshold/difference/lower_threshold",
+              "access": "ro",
+              "type": "uint",
+              "remarks": "Lower threshold used for calculating difference images. Difference images are calculated by subtracting the counts of the upper threshold image from the counts of the lower threshold image. Only available for detectors with more than one threshold."
+            },
+            {
+              "name": "threshold/difference/mode",
+              "access": "rw",
+              "type": "string",
+              "remarks": "Calculation of difference images, which can be \u2019enabled\u2019 or \u2019disabled\u2019. When disabled, no difference images will be written to file or delivered from any other data interface. Only available for detectors with more than one threshold. Information #19 If threshold/difference/mode is to be used, all threshold/n/mode have to be enabled beforehand."
+            },
+            {
+              "name": "threshold/difference/upper_threshold",
+              "access": "ro",
+              "type": "uint",
+              "remarks": "Upper threshold used for calculating difference images. Difference images are calculated by subtracting the counts of the upper threshold image from the counts of the lower threshold image. Only available for detectors with more than one threshold."
+            },
+            {
+              "name": "threshold/n/energy",
+              "access": "rw",
+              "type": "float",
+              "remarks": "Threshold energy for X-ray counting for threshold n. Energies should be increasing with the treshold number n. Example: threshold/1 < threshold/2 < threshold/n-1 < threshold/n 13"
+            },
+            {
+              "name": "threshold/n/flatfield",
+              "access": "rw",
+              "type": "float[][]",
+              "remarks": "Flatfield correction factors used for flatfield correction. Pixel data are multiplied with these factors for calculating flatfield corrected data. Information #16 Customer specific flatfields can be uploaded after setting the threshold_energy and photon_energy."
+            },
+            {
+              "name": "threshold/n/mode",
+              "access": "rw",
+              "type": "string",
+              "remarks": "Image data acquisition for threshold n, which can be \u2019enabled\u2019 or \u2019disabled\u2019. When disabled, no image data from this threshold will be written to file or delivered from any other data interface. Information #17 If threshold/difference/mode is to be used, all threshold/n/mode have to be enabled beforehand.a a"
+            },
+            {
+              "name": "threshold/n/number_of_excluded_pixels",
+              "access": "ro",
+              "type": "uint",
+              "remarks": "Only available for certain detectors. Please refer to the User Manual and Technical specifications for further details. Total number of defective, disabled or inactive pixels for threshold n."
+            },
+            {
+              "name": "threshold/n/pixel_mask",
+              "access": "rw",
+              "type": "uint[][]",
+              "remarks": "A bit mask that labels and classifies pixels which are either defective, inactive or exhibit non-standard behavior Bit 0: gap (pixel with no sensor) Bit 1: dead Bit 2: under responding Bit 3: over responding Bit 4: noisy Bit 5-31: -undefinedInformation #18 Please note that the actual integer value of a pixel in the mask depends on which bits are set, e.g. a..."
+            },
+            {
+              "name": "threshold_energy",
+              "access": "rw",
+              "type": "float",
+              "remarks": "Threshold energy for X-ray counting. Photons with an energy below the threshold are not detected. See the User Manual for details. Information #14 For detectors with more than one threshold, this resource is mapped to the resource threshold/1/energy."
+            },
+            {
+              "name": "transformation_order",
+              "access": "rw",
+              "type": "string[]",
+              "remarks": "Order of execution for goniometer rotation axes. Allowed values are chi, kappa, omega and phi. Let transformation_order = [kappa, chi] and Rkappa , Rchi the corresponding transformation matrices, then the combined transformation would be Rchi Rkappa ."
+            },
+            {
+              "name": "trigger_mode",
+              "access": "rw",
+              "type": "string",
+              "remarks": "Mode of triggering image acquisition. See the User Manual for details."
+            },
+            {
+              "name": "trigger_start_delay",
+              "access": "rw",
+              "type": "float",
+              "remarks": "Delayed time from when the trigger comes until the configured series starts. Trigger Start Delay can be used in ints and exts mode."
+            },
+            {
+              "name": "two_theta_axis",
+              "access": "rw",
+              "type": "float[]",
+              "remarks": "Two theta rotation axis given as a threedimensional unit vector in a right-handed system."
+            },
+            {
+              "name": "two_theta_increment",
+              "access": "rw",
+              "type": "float",
+              "remarks": "Two theta increment per frame."
+            },
+            {
+              "name": "two_theta_start",
+              "access": "rw",
+              "type": "float",
+              "remarks": "Two theta start angle (start angle of the first frame)."
+            },
+            {
+              "name": "virtual_pixel_correction_applied",
+              "access": "rw",
+              "type": "float",
+              "remarks": "Enables (True) or disables (False) applying the virtual_pixel_correction on the acquired data."
+            },
+            {
+              "name": "wavelength",
+              "access": "rw",
+              "type": "float",
+              "remarks": "Wavelength of incident X-rays. See the User Manual for details."
+            },
+            {
+              "name": "x_pixel_size",
+              "access": "ro",
+              "type": "float",
+              "remarks": "Size of a single pixel along x-axis of the detector."
+            },
+            {
+              "name": "x_pixels_in_detector",
+              "access": "ro",
+              "type": "uint",
+              "remarks": "Number of pixels along x-axis of the detector."
+            },
+            {
+              "name": "y_pixel_size",
+              "access": "ro",
+              "type": "float",
+              "remarks": "Size of a single pixel along y-axis of the detector."
+            },
+            {
+              "name": "y_pixels_in_detector",
+              "access": "ro",
+              "type": "uint",
+              "remarks": "Number of pixels along y-axis of the detector. JSON Serialization Meta information in the body of the request and in the reply from the HTTP server are serialized in the JSON format and described in the table below."
+            }
+          ]
+        },
+        {
+          "id": "status",
+          "label": "Status",
+          "params": [
+            {
+              "name": "board_000/th0_humidity",
+              "access": "ro",
+              "type": "float",
+              "remarks": "Caution This parameter is please use humidity. #6 deprecated, Relative humidity reported by humidity sensor."
+            },
+            {
+              "name": "board_000/th0_temp",
+              "access": "ro",
+              "type": "float",
+              "remarks": "Caution #7 This parameter is deprecated, please use temperature. Temperature reported by temperature sensor."
+            },
+            {
+              "name": "error",
+              "access": "ro",
+              "type": "string[]",
+              "remarks": "Always returns empty list. Only available for backwards compability"
+            },
+            {
+              "name": "high_voltage/state",
+              "access": "ro",
+              "type": "string",
+              "remarks": "Returns high voltage state of target (NA, OFF, RAMPING, READY). Information #20 For optimal data quality acquisitions should only be started when state is READY."
+            },
+            {
+              "name": "humidity",
+              "access": "ro",
+              "type": "float",
+              "remarks": "Humidity inside the detector module compartment."
+            },
+            {
+              "name": "state",
+              "access": "ro",
+              "type": "string",
+              "remarks": "Possible states: na (not available), ready, initialize, configure, acquire, idle, test, error. Information #21 State is \u201dna\u201d, when the DCU is booted or the acquisition service was restarted."
+            },
+            {
+              "name": "temperature",
+              "access": "ro",
+              "type": "float",
+              "remarks": "Detector temperature."
+            },
+            {
+              "name": "time",
+              "access": "ro",
+              "type": "string",
+              "remarks": "Returns current system time. Formatted according to ISO 8601 JSON Serialization Get requests have no body. The returned JSON of a get request string contains a subset of the fields below. Only fields which are applicable for a given resource are present in the returned JSON."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "monitor",
+      "label": "Monitor",
+      "sections": [
+        {
+          "id": "config",
+          "label": "Config",
+          "params": [
+            {
+              "name": "buffer_size",
+              "access": "rw",
+              "type": "uint",
+              "remarks": "Specifies the maximum number of exposures that may be buffered by the Monitor. The effective size of the buffer may be smaller depending on the active configuration and amount of allocated memory (see buffer_free). Default: 100."
+            },
+            {
+              "name": "discard_new",
+              "access": "rw",
+              "type": "bool",
+              "remarks": "When true, new exposures are dropped when the Monitor buffer is full. Shrinking the size of the buffer will evict (drop) newer exposures first. When false, older exposures will be evicted (dropped) when the buffer is full or shrunk. Default: true."
+            },
+            {
+              "name": "mode",
+              "access": "rw",
+              "type": "string",
+              "remarks": "Operational mode of the Monitor. When set to enabled, the Monitor processes incoming exposures. When set to disabled, incoming exposures are ignored and do not affect the Monitor."
+            }
+          ]
+        },
+        {
+          "id": "status",
+          "label": "Status",
+          "params": [
+            {
+              "name": "buffer_free",
+              "access": "ro",
+              "type": "uint",
+              "remarks": "The remaining buffer space in bytes. Note: The total available space in bytes is based on the amount of allocated memory and is unaffected by buffer_size."
+            },
+            {
+              "name": "dropped",
+              "access": "ro",
+              "type": "uint",
+              "remarks": "Number of images which were dropped as not requested."
+            },
+            {
+              "name": "error",
+              "access": "ro",
+              "type": "string[]",
+              "remarks": "Unused."
+            },
+            {
+              "name": "state",
+              "access": "ro",
+              "type": "string",
+              "remarks": "The value overflow if images were dropped due to a full buffer, otherwise the value normal. 5.2.4. Monitor Command Parameters To clear the buffer of images, the following command can be executed at the address http://<address_of_dcu>/monitor/api/1.8.0/command/clear []$_ URLs <uri> = http://<ADDRESS_of_DCU>/monitor/api/<VERSION>/command/<PARAMETER>"
+            }
+          ]
+        },
+        {
+          "id": "images",
+          "label": "Images",
+          "params": [
+            {
+              "name": "monitor",
+              "access": "ro",
+              "type": "tif",
+              "remarks": "Gets the last (newest) exposure. Default waits for 500 ms for image. Timeout adjustable by adding query string ?timeout=<ms> to URI. Returns 408 if no image is available."
+            },
+            {
+              "name": "next",
+              "access": "ro",
+              "type": "tif",
+              "remarks": "Gets the oldest image (next in order) and removes it from the buffer. Default waits for 500 ms for image. Timeout via ?timeout=<ms> adjustable. Returns 408 if no image available."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "filewriter",
+      "label": "Filewriter",
+      "sections": [
+        {
+          "id": "config",
+          "label": "Config",
+          "params": [
+            {
+              "name": "compression_enabled",
+              "access": "rw",
+              "type": "bool",
+              "remarks": "Enables (True) or disables (False) compression of detector data written to HDF5 files. Compression is required for full detector performance, disabling compression may lead to data loss at high frame rates. For compression modes see section 5.1.1 Detector Configuration Parameters (compression)."
+            },
+            {
+              "name": "format",
+              "access": "rw",
+              "type": "string",
+              "remarks": "Select the format of the files written by FileWriter. \u2022 \u201dhdf5 nexus legacy nxmx\u201d: HDF5 files where the metadata of the master file is following the NXmx application definition of the NeXus 3."
+            },
+            {
+              "name": "image_nr_start",
+              "access": "rw",
+              "type": "uint",
+              "remarks": "Sets the image_nr_low metadata parameter in the first HDF5 data file <name_pattern>_data_000001.h5. This parameter is useful when a data set is collected in more than one HDF5 file structures. If you collect image number m to n in the first file structure, you can set image_nr_start to n+1 in the subsequent file structure."
+            },
+            {
+              "name": "mode",
+              "access": "rw",
+              "type": "string",
+              "remarks": "Operation mode of the FileWriter, which can be enabled or disabled. During an active acquisition the interface remains enabled and will be disabled after receiving the end of series message."
+            },
+            {
+              "name": "name_pattern",
+              "access": "rw",
+              "type": "string",
+              "remarks": "The basename of the file. The pattern $id will include the sequence number in the file name. series_$id is the default name pattern, resulting in the following names of the HDF5 file structure created by the FileWriter: series_<sequence_nr>_master."
+            },
+            {
+              "name": "nimages_per_file",
+              "access": "rw",
+              "type": "uint",
+              "remarks": "Maximum number of images stored in each <name_pattern>_data_<file_nr>.h5 file in the HDF5 file structure created by the FileWriter. Data files are only created when <nimages_per_file> is reached or when detector command disarm is sent."
+            }
+          ]
+        },
+        {
+          "id": "status",
+          "label": "Status",
+          "params": [
+            {
+              "name": "buffer_free",
+              "access": "ro",
+              "type": "uint",
+              "remarks": "The remaining buffer space in Bytes."
+            },
+            {
+              "name": "error",
+              "access": "ro",
+              "type": "string[]",
+              "remarks": "Returns list of status parameters causing error condition."
+            },
+            {
+              "name": "files",
+              "access": "ro",
+              "type": "string[]",
+              "remarks": "Returns list of available files on the DCU."
+            },
+            {
+              "name": "state",
+              "access": "ro",
+              "type": "string",
+              "remarks": "Possible states: disabled, ready, acquire, error. 5.3.4. FileWriter Command Parameters Command parameters are write only. The base path to the resource is: []$_ URL <uri> = http://<ADDRESS_OF_DCU>/filewriter/api/<VERSION>/command/<PARAMETER>"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stream",
+      "label": "Stream",
+      "sections": [
+        {
+          "id": "config",
+          "label": "Config",
+          "params": [
+            {
+              "name": "format",
+              "access": "rw",
+              "type": "string",
+              "remarks": "Select the format of the event messages. \u2022 legacy: Use legacy multi-part JSON messages. \u2022 cbor: Use CBOR messages. See also https://github.com/dectris/ documentation/tree/main/stream_v2"
+            },
+            {
+              "name": "header_appendix",
+              "access": "rw",
+              "type": "string",
+              "remarks": "User data to be included in start event messages. If legacy stream format is selected, data will be visible as string in header_appendix JSON message."
+            },
+            {
+              "name": "header_detail",
+              "access": "rw",
+              "type": "string",
+              "remarks": "Select which fields are sent in the start messages: \u2022 all: All fields \u2022 basic: Exclude flatfield and pixel mask \u2022 none: No meta data Caution #12 If header_detail \u201dnone\u201d is selected, no experimental meta-data is transferred, complicating processing and archiving of the data. Therefore, usage of header_detail \u201dnone\u201d is discouraged."
+            },
+            {
+              "name": "image_appendix",
+              "access": "rw",
+              "type": "string",
+              "remarks": "User data to be included in start event messages. If legacy stream format is selected, data will be visible as string in image_appendix JSON message."
+            },
+            {
+              "name": "mode",
+              "access": "rw",
+              "type": "string",
+              "remarks": "State of the stream interface, either enabled or disabled."
+            }
+          ]
+        },
+        {
+          "id": "status",
+          "label": "Status",
+          "params": [
+            {
+              "name": "dropped",
+              "access": "ro",
+              "type": "uint",
+              "remarks": "Number of images that got dropped as not requested. After \u201darm\u201d this number is reset to zero."
+            },
+            {
+              "name": "state",
+              "access": "ro",
+              "type": "string",
+              "remarks": "disabled, ready, acquire or error. After the detector has been armed the state becomes acquire, after disarm, abort or cancel the state becomes ready. There are currently no error conditions. 5.4.5. Stream Command Parameters Command parameters are write only. The base path to the resource is:"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "system",
+      "label": "System",
+      "sections": [
+        {
+          "id": "config",
+          "label": "Config",
+          "params": [
+            {
+              "name": "datetime/date",
+              "access": "rw",
+              "type": "string",
+              "remarks": "Returns or sets the current date."
+            },
+            {
+              "name": "datetime/ntp",
+              "access": "rw",
+              "type": "string",
+              "remarks": "Enables (on) or disables (off) Network Time Protocol (NTP)."
+            },
+            {
+              "name": "datetime/ntp_server",
+              "access": "rw",
+              "type": "string",
+              "remarks": "Returns or sets the comma seperate list of Network Time Protocol (NTP) servers."
+            },
+            {
+              "name": "datetime/time",
+              "access": "rw",
+              "type": "string",
+              "remarks": "Gets or sets the current time (HH:MM:SS)."
+            },
+            {
+              "name": "datetime/timezone",
+              "access": "rw",
+              "type": "string",
+              "remarks": "Gets or sets the current timezone. Also returns list of available timezones on a GET request."
+            },
+            {
+              "name": "network/n/addr",
+              "access": "rw",
+              "type": "string",
+              "remarks": "Returns or sets the network address (IP) of the detector control unit network interface \u201dn\u201d. Information #26 Please note that the fall-back interface configurations are read-only."
+            },
+            {
+              "name": "network/n/dhcp",
+              "access": "rw",
+              "type": "string",
+              "remarks": "Enables (on) or disables (off) DHCP for detector control unit network interface \u201dn\u201d."
+            },
+            {
+              "name": "network/n/dns1",
+              "access": "rw",
+              "type": "string",
+              "remarks": "Returns or sets the primary domain name server (DNS) for detector control unit network interface \u201dn\u201d."
+            },
+            {
+              "name": "network/n/dns2",
+              "access": "rw",
+              "type": "string",
+              "remarks": "Returns or sets the secondary domain name server (DNS) for detector control unit network interface \u201dn\u201d."
+            },
+            {
+              "name": "network/n/mtu",
+              "access": "rw",
+              "type": "string",
+              "remarks": "Returns or sets the maximum transmission unit (MTU) for detector control unit network interface \u201dn\u201d."
+            },
+            {
+              "name": "network/n/netmask",
+              "access": "rw",
+              "type": "string",
+              "remarks": "Return or sets the netmask for detector control unit network interface \u201dn\u201d."
+            },
+            {
+              "name": "network/n/static_routes",
+              "access": "rw",
+              "type": "string",
+              "remarks": "Return or sets the static routes for detector control unit network interface \u201dn\u201d. Information #28 Example: \u201dvalue\u201d:[\u201dgateway\u201d:\u201d192.168.50.2\u201d, \u201ddestination\u201d:\u201d10.20.1.1/32\u201d, \u201dgateway\u201d:\u201d192.168.50.3\u201d, \u201ddestination\u201d:\u201d10.30.0.0/16\u201d]"
+            },
+            {
+              "name": "system_info/service_tag",
+              "access": "ro",
+              "type": "string",
+              "remarks": "Returns the DELL service tag of the detector control unit. 5.5.2. System Command Parameters Command parameters are write only. The base path to the resource is: []$_ URL <uri> = http://<ADDRESS_OF_DCU>/system/api/<VERSION>/command/<PARAMETER>"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

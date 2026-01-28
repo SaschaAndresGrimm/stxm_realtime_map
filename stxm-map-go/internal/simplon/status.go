@@ -114,6 +114,47 @@ func CommandAsync(baseURL string, apiVersion string, command string) error {
 	return nil
 }
 
+func ConfigSet(ctx context.Context, baseURL string, apiVersion string, param string, value any) (int, string) {
+	if baseURL == "" {
+		return http.StatusBadRequest, "missing base url"
+	}
+	baseURL = strings.TrimRight(baseURL, "/")
+	apiVersion = strings.Trim(apiVersion, "/")
+	if param == "" {
+		return http.StatusBadRequest, "missing parameter"
+	}
+
+	payload, err := json.Marshal(map[string]any{"value": value})
+	if err != nil {
+		return http.StatusBadRequest, "invalid value"
+	}
+
+	paths := make([]string, 0, 2)
+	if apiVersion != "" {
+		paths = append(paths, baseURL+"/detector/api/"+apiVersion+"/config/"+param)
+	}
+	paths = append(paths, baseURL+"/detector/config/"+param)
+
+	client := &http.Client{Timeout: 2 * time.Second}
+	for _, path := range paths {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPut, path, strings.NewReader(string(payload)))
+		if err != nil {
+			continue
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := client.Do(req)
+		if err != nil {
+			continue
+		}
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
+			return resp.StatusCode, strings.TrimSpace(string(body))
+		}
+	}
+	return http.StatusNotFound, "not found"
+}
+
 func fetchStatus(ctx context.Context, client *http.Client, endpoint string) string {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {

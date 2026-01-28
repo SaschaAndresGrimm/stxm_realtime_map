@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"io"
 	"io/fs"
 	"net/http"
 	"strings"
@@ -58,6 +59,8 @@ func Run(ctx context.Context, cfg config.AppConfig, messages <-chan any, statusF
 	mux.HandleFunc("/config", srv.handleConfig)
 	mux.HandleFunc("/status", srv.handleStatus)
 	mux.HandleFunc("/detector/command/", srv.handleDetectorCommand)
+	mux.HandleFunc("/detector/config/", srv.handleDetectorConfig)
+	mux.HandleFunc("/simplon/", srv.handleSimplon)
 
 	httpServer := &http.Server{
 		Addr:              ":" + itoa(cfg.Port),
@@ -222,6 +225,222 @@ func (s *Server) handleDetectorCommand(w http.ResponseWriter, r *http.Request) {
 		"status":  http.StatusAccepted,
 		"command": cmd,
 	})
+}
+
+func (s *Server) handleDetectorConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	param := strings.TrimPrefix(r.URL.Path, "/detector/config/")
+	if param == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": "missing parameter",
+		})
+		return
+	}
+	if s.cfg.SimplonBaseURL == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": "simplon base url not configured",
+		})
+		return
+	}
+	var payload map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": "invalid json body",
+		})
+		return
+	}
+	value, ok := payload["value"]
+	if !ok {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": "missing value",
+		})
+		return
+	}
+	code, body := simplon.ConfigSet(r.Context(), s.cfg.SimplonBaseURL, s.cfg.SimplonAPIVersion, param, value)
+	ok = code >= 200 && code < 300
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"ok":     ok,
+		"status": code,
+		"param":  param,
+		"body":   body,
+	})
+}
+
+func (s *Server) handleSimplon(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/simplon/")
+	parts := strings.SplitN(path, "/", 3)
+	if len(parts) < 3 {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": "invalid path",
+		})
+		return
+	}
+	module := parts[0]
+	kind := parts[1]
+	param := parts[2]
+	if param == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": "missing parameter",
+		})
+		return
+	}
+	if s.cfg.SimplonBaseURL == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": "simplon base url not configured",
+		})
+		return
+	}
+	switch kind {
+	case "command":
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if err := simplon.CommandAsyncModule(s.cfg.SimplonBaseURL, s.cfg.SimplonAPIVersion, module, param); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"ok":     false,
+				"status": http.StatusBadRequest,
+				"error":  err.Error(),
+			})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":     true,
+			"status": http.StatusAccepted,
+			"param":  param,
+		})
+	case "config":
+		if r.Method == http.MethodPut {
+			var payload map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"ok":    false,
+					"error": "invalid json body",
+				})
+				return
+			}
+			value, ok := payload["value"]
+			if !ok {
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"ok":    false,
+					"error": "missing value",
+				})
+				return
+			}
+			code, body := simplon.ConfigSetModule(r.Context(), s.cfg.SimplonBaseURL, s.cfg.SimplonAPIVersion, module, param, value)
+			ok = code >= 200 && code < 300
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(code)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"ok":     ok,
+				"status": code,
+				"param":  param,
+				"body":   body,
+			})
+			return
+		}
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		code, body := simplon.ConfigGetModule(r.Context(), s.cfg.SimplonBaseURL, s.cfg.SimplonAPIVersion, module, param)
+		ok := code >= 200 && code < 300
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(code)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":     ok,
+			"status": code,
+			"param":  param,
+			"body":   body,
+		})
+	case "status":
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		code, body := simplon.StatusGetModule(r.Context(), s.cfg.SimplonBaseURL, s.cfg.SimplonAPIVersion, module, param)
+		ok := code >= 200 && code < 300
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(code)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":     ok,
+			"status": code,
+			"param":  param,
+			"body":   body,
+		})
+	case "images":
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		s.proxySimplon(w, r, module, "images", param)
+	default:
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": "unsupported operation",
+		})
+	}
+}
+
+func (s *Server) proxySimplon(w http.ResponseWriter, r *http.Request, module string, kind string, param string) {
+	paths := simplon.BuildPaths(s.cfg.SimplonBaseURL, s.cfg.SimplonAPIVersion, module, kind, param)
+	if len(paths) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	client := &http.Client{Timeout: 5 * time.Second}
+	for _, path := range paths {
+		if r.URL.RawQuery != "" {
+			path = path + "?" + r.URL.RawQuery
+		}
+		req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, path, nil)
+		if err != nil {
+			continue
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			continue
+		}
+		if resp.StatusCode == http.StatusNotFound {
+			_ = resp.Body.Close()
+			continue
+		}
+		for key, values := range resp.Header {
+			for _, value := range values {
+				w.Header().Add(key, value)
+			}
+		}
+		w.WriteHeader(resp.StatusCode)
+		_, _ = io.Copy(w, resp.Body)
+		_ = resp.Body.Close()
+		return
+	}
+	w.WriteHeader(http.StatusNotFound)
 }
 
 func (s *Server) broadcast(ctx context.Context, messages <-chan any) {

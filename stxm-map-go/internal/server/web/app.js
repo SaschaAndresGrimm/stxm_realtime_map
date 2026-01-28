@@ -16,6 +16,27 @@ const panelTabButtons = document.querySelectorAll("[data-panel-tab]");
 const panelTabPages = document.querySelectorAll("[data-panel-page]");
 const detectorButtons = document.querySelectorAll("[data-detector-cmd]");
 const detectorCommandStatus = document.getElementById("detector-command-status");
+const detectorApplyBtn = document.getElementById("detector-apply");
+const detectorConfigStatus = document.getElementById("detector-config-status");
+const detectorCountTime = document.getElementById("detector-count-time");
+const detectorFrameTime = document.getElementById("detector-frame-time");
+const detectorTriggerMode = document.getElementById("detector-trigger-mode");
+const detectorNTrigger = document.getElementById("detector-ntrigger");
+const detectorNImages = document.getElementById("detector-nimages");
+const paramSearchInput = document.getElementById("param-search");
+const paramBrowser = document.getElementById("param-browser");
+const paramFilterConfig = document.getElementById("param-filter-config");
+const paramFilterStatus = document.getElementById("param-filter-status");
+const paramFilterCommand = document.getElementById("param-filter-command");
+const paramFilterImages = document.getElementById("param-filter-images");
+const paramFavoritesOnly = document.getElementById("param-favorites-only");
+const paramExpandBtn = document.getElementById("param-expand");
+const paramCollapseBtn = document.getElementById("param-collapse");
+const paramFavoritesEditBtn = document.getElementById("param-favorites-edit");
+const paramFavoritesEditor = document.getElementById("param-favorites-editor");
+const paramFavoritesText = document.getElementById("param-favorites-text");
+const paramFavoritesSave = document.getElementById("param-favorites-save");
+const paramFavoritesCancel = document.getElementById("param-favorites-cancel");
 const colorSchemeSelect = document.getElementById("color-scheme");
 const contrastMin = document.getElementById("contrast-min");
 const contrastMax = document.getElementById("contrast-max");
@@ -48,6 +69,33 @@ let manualMin = 0;
 let manualMax = 255;
 const mobileQuery = window.matchMedia("(max-width: 900px)");
 const isMobile = () => mobileQuery.matches;
+let paramRows = [];
+let paramSections = [];
+let paramModules = [];
+const defaultParamFavorites = [
+  { module: "detector", section: "command", name: "initialize" },
+  { module: "detector", section: "command", name: "arm" },
+  { module: "detector", section: "command", name: "trigger" },
+  { module: "detector", section: "command", name: "disarm" },
+  { module: "detector", section: "config", name: "count_time" },
+  { module: "detector", section: "config", name: "frame_time" },
+  { module: "detector", section: "config", name: "trigger_mode" },
+  { module: "detector", section: "config", name: "ntrigger" },
+  { module: "detector", section: "config", name: "nimages" },
+  { module: "detector", section: "config", name: "threshold/n/energy" },
+  { module: "detector", section: "config", name: "threshold/n/mode" },
+  { module: "stream", section: "config", name: "mode" },
+  { module: "stream", section: "config", name: "format" },
+  { module: "monitor", section: "config", name: "mode" },
+  { module: "filewriter", section: "config", name: "mode" },
+  { module: "filewriter", section: "config", name: "format" },
+  { module: "filewriter", section: "config", name: "name_pattern" },
+];
+let currentFavorites = [];
+let currentFavoriteSet = new Set();
+let paramDefs = null;
+let detectorPollId = null;
+let detectorPollInFlight = false;
 
 function activatePanelTab(name) {
   panelTabButtons.forEach((btn) => {
@@ -60,6 +108,12 @@ function activatePanelTab(name) {
     page.classList.toggle("is-hidden", !active);
   });
   localStorage.setItem("panelTab", name);
+  if (name === "detector") {
+    loadDetectorConfig({ silent: false });
+    startDetectorPoll();
+  } else {
+    stopDetectorPoll();
+  }
 }
 
 const storedTab = localStorage.getItem("panelTab");
@@ -91,6 +145,580 @@ detectorButtons.forEach((btn) => {
     }
   });
 });
+
+async function applyDetectorConfig(param, value) {
+  const res = await fetch(`/detector/config/${param}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ value }),
+  });
+  const data = await res.json().catch(() => ({}));
+  return { ok: data.ok, status: data.status || res.status };
+}
+
+detectorApplyBtn?.addEventListener("click", async () => {
+  const updates = [];
+  if (detectorCountTime?.value) {
+    updates.push(["count_time", parseFloat(detectorCountTime.value)]);
+  }
+  if (detectorFrameTime?.value) {
+    updates.push(["frame_time", parseFloat(detectorFrameTime.value)]);
+  }
+  if (detectorTriggerMode?.value) {
+    updates.push(["trigger_mode", detectorTriggerMode.value]);
+  }
+  if (detectorNTrigger?.value) {
+    updates.push(["ntrigger", parseInt(detectorNTrigger.value, 10)]);
+  }
+  if (detectorNImages?.value) {
+    updates.push(["nimages", parseInt(detectorNImages.value, 10)]);
+  }
+
+  if (updates.length === 0) {
+    detectorConfigStatus.textContent = "No settings to apply.";
+    return;
+  }
+
+  detectorConfigStatus.textContent = "Applying settings...";
+  for (const [param, value] of updates) {
+    if (!Number.isFinite(value) && typeof value === "number") {
+      detectorConfigStatus.textContent = `Invalid value for ${param}`;
+      return;
+    }
+    const result = await applyDetectorConfig(param, value);
+    if (!result.ok) {
+      detectorConfigStatus.textContent = `${param} failed (${result.status})`;
+      return;
+    }
+  }
+  detectorConfigStatus.textContent = "Settings applied.";
+});
+
+async function loadDetectorConfig({ silent } = {}) {
+  if (detectorPollInFlight) return;
+  const fields = [
+    ["count_time", detectorCountTime],
+    ["frame_time", detectorFrameTime],
+    ["trigger_mode", detectorTriggerMode],
+    ["ntrigger", detectorNTrigger],
+    ["nimages", detectorNImages],
+  ];
+  if (!fields.some(([, el]) => el)) return;
+  detectorPollInFlight = true;
+  if (!silent) {
+    detectorConfigStatus.textContent = "Loading current settings...";
+  }
+  try {
+    for (const [param, el] of fields) {
+      if (!el) continue;
+      if (document.activeElement === el) continue;
+      try {
+        const res = await fetch(`/simplon/detector/config/${encodeParamPath(param)}`);
+        const data = await res.json().catch(() => ({}));
+        if (data.ok) {
+          const value = extractValueFromBody(data.body);
+          if (value !== null && value !== undefined) {
+            el.value = typeof value === "string" ? value : String(value);
+          }
+        }
+      } catch (_) {
+        // ignore; keep existing value
+      }
+    }
+  } finally {
+    detectorPollInFlight = false;
+  }
+  if (!silent) {
+    detectorConfigStatus.textContent = "Loaded current settings.";
+  }
+}
+
+function startDetectorPoll() {
+  if (detectorPollId != null) return;
+  detectorPollId = window.setInterval(() => {
+    const page = document.querySelector("[data-panel-page=\"detector\"]");
+    if (page && !page.classList.contains("is-hidden")) {
+      loadDetectorConfig({ silent: true });
+    }
+  }, 5000);
+}
+
+function stopDetectorPoll() {
+  if (detectorPollId == null) return;
+  window.clearInterval(detectorPollId);
+  detectorPollId = null;
+}
+
+function encodeParamPath(param) {
+  return param
+    .split("/")
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+}
+
+function parseParamValue(raw) {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return { ok: false, error: "Value required." };
+  }
+  try {
+    return { ok: true, value: JSON.parse(trimmed) };
+  } catch (_) {
+    return { ok: true, value: trimmed };
+  }
+}
+
+function formatParamResult(body) {
+  if (body == null) return "";
+  if (typeof body !== "string") {
+    try {
+      return JSON.stringify(body, null, 2);
+    } catch (_) {
+      return String(body);
+    }
+  }
+  const trimmed = body.trim();
+  if (!trimmed) return "";
+  try {
+    const parsed = JSON.parse(trimmed);
+    return JSON.stringify(parsed, null, 2);
+  } catch (_) {
+    return trimmed;
+  }
+}
+
+function buildFavoriteSet(favorites) {
+  const set = new Set();
+  (favorites || []).forEach((fav) => {
+    const name = (fav.name || "").toLowerCase();
+    const module = (fav.module || "").toLowerCase();
+    const section = (fav.section || "").toLowerCase();
+    if (!name || !module || !section) return;
+    set.add(`${module}|${section}|${name}`);
+  });
+  return set;
+}
+
+function formatFavorites(favorites) {
+  return (favorites || [])
+    .map((fav) => `${fav.module}/${fav.section}/${fav.name}`)
+    .join("\n");
+}
+
+function parseFavoritesInput(text) {
+  const out = [];
+  const lines = (text || "").split("\n");
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    let module = "";
+    let section = "";
+    let name = "";
+    if (trimmed.includes("/")) {
+      const parts = trimmed.split("/").map((p) => p.trim()).filter(Boolean);
+      if (parts.length < 3) continue;
+      module = parts[0];
+      section = parts[1];
+      name = parts.slice(2).join("/");
+    } else if (trimmed.includes(".")) {
+      const parts = trimmed.split(".").map((p) => p.trim()).filter(Boolean);
+      if (parts.length < 3) continue;
+      module = parts[0];
+      section = parts[1];
+      name = parts.slice(2).join(".");
+    } else {
+      continue;
+    }
+    out.push({ module: module.toLowerCase(), section: section.toLowerCase(), name: name.toLowerCase() });
+  }
+  return out;
+}
+
+function extractValueFromBody(body) {
+  if (!body) return null;
+  try {
+    const parsed = JSON.parse(body);
+    if (parsed && typeof parsed === "object" && "value" in parsed) {
+      return parsed.value;
+    }
+    return parsed;
+  } catch (_) {
+    return body;
+  }
+}
+
+function setParamStatus(el, text, state) {
+  if (!el) return;
+  el.textContent = text;
+  el.classList.remove("param-result-ok", "param-result-error");
+  if (state) {
+    el.classList.add(state === "ok" ? "param-result-ok" : "param-result-error");
+  }
+}
+
+function buildParamRow(moduleId, sectionId, param) {
+  const effectiveModule = param.module || moduleId;
+  const effectiveSection = param.section || sectionId;
+  const row = document.createElement("div");
+  row.className = "param-row";
+  row.dataset.paramName = param.name.toLowerCase();
+  row.dataset.paramModule = effectiveModule;
+  row.dataset.paramKind = effectiveSection;
+
+  const info = document.createElement("div");
+  info.className = "param-info";
+  const nameEl = document.createElement("div");
+  nameEl.className = "param-name";
+  nameEl.textContent = param.name;
+  if (param.remarks) {
+    const help = document.createElement("span");
+    help.className = "param-help";
+    help.textContent = "?";
+    help.title = param.remarks;
+    nameEl.appendChild(help);
+  }
+  const meta = document.createElement("div");
+  meta.className = "param-meta";
+  const typeLabel = param.type ? param.type : "command";
+  const accessLabel = param.access ? param.access.toUpperCase() : "";
+  meta.textContent = [typeLabel, accessLabel].filter(Boolean).join(" · ");
+  info.appendChild(nameEl);
+  info.appendChild(meta);
+
+  const actions = document.createElement("div");
+  actions.className = "param-actions";
+
+  const result = document.createElement("div");
+  result.className = "param-result";
+
+  const access = param.access || "";
+  const canRead = access.includes("r");
+  const canWrite = access.includes("w");
+
+  if (effectiveSection === "command") {
+    const btn = document.createElement("button");
+    btn.className = "export-btn param-btn";
+    btn.textContent = "Run";
+    btn.addEventListener("click", async () => {
+      if (effectiveModule === "system") {
+        const ok = window.confirm(`Run system command ${param.name}?`);
+        if (!ok) return;
+      }
+      setParamStatus(result, "Sending…");
+      try {
+        const res = await fetch(`/simplon/${effectiveModule}/command/${encodeParamPath(param.name)}`, {
+          method: "POST",
+        });
+        const data = await res.json().catch(() => ({}));
+        if (data.ok) {
+          setParamStatus(result, "Queued", "ok");
+        } else {
+          setParamStatus(result, `Failed (${data.status || res.status})`, "error");
+        }
+      } catch (_) {
+        setParamStatus(result, "Failed", "error");
+      }
+    });
+    actions.appendChild(btn);
+  } else if (effectiveSection === "images") {
+    const link = document.createElement("button");
+    link.className = "export-btn param-btn";
+    link.textContent = "Open";
+    link.addEventListener("click", () => {
+      const url = `/simplon/${effectiveModule}/images/${encodeParamPath(param.name)}`;
+      window.open(url, "_blank", "noopener");
+    });
+    actions.appendChild(link);
+  } else {
+    let input = null;
+    if (effectiveSection === "config") {
+      input = document.createElement("input");
+      input.className = "param-input";
+      input.type = "text";
+      input.placeholder = param.type || "value";
+      actions.appendChild(input);
+    }
+    if (canWrite && effectiveSection === "config") {
+      const setBtn = document.createElement("button");
+      setBtn.className = "export-btn param-btn";
+      setBtn.textContent = "Set";
+      setBtn.addEventListener("click", async () => {
+        if (!input) return;
+        const parsed = parseParamValue(input.value);
+        if (!parsed.ok) {
+          setParamStatus(result, parsed.error, "error");
+          return;
+        }
+        setParamStatus(result, "Sending…");
+        try {
+          const res = await fetch(`/simplon/${effectiveModule}/config/${encodeParamPath(param.name)}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ value: parsed.value }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (data.ok) {
+            setParamStatus(result, "Saved", "ok");
+          } else {
+            setParamStatus(result, `Failed (${data.status || res.status})`, "error");
+          }
+        } catch (_) {
+          setParamStatus(result, "Failed", "error");
+        }
+      });
+      actions.appendChild(setBtn);
+    }
+    if (canRead) {
+      const getBtn = document.createElement("button");
+      getBtn.className = "export-btn param-btn";
+      getBtn.textContent = "Get";
+      getBtn.addEventListener("click", async () => {
+        setParamStatus(result, "Loading…");
+        try {
+          const res = await fetch(`/simplon/${effectiveModule}/${effectiveSection}/${encodeParamPath(param.name)}`);
+          const data = await res.json().catch(() => ({}));
+          if (data.ok) {
+            const value = extractValueFromBody(data.body);
+            if (input && effectiveSection === "config") {
+              if (typeof value === "string") {
+                input.value = value;
+              } else {
+                input.value = JSON.stringify(value);
+              }
+            }
+            setParamStatus(result, formatParamResult(data.body), "ok");
+          } else {
+            setParamStatus(result, `Failed (${data.status || res.status})`, "error");
+          }
+        } catch (_) {
+          setParamStatus(result, "Failed", "error");
+        }
+      });
+      actions.appendChild(getBtn);
+    }
+  }
+
+  row.appendChild(info);
+  row.appendChild(actions);
+  row.appendChild(result);
+  return row;
+}
+
+function renderParamBrowser(defs) {
+  if (!paramBrowser) return;
+  paramBrowser.innerHTML = "";
+  paramRows = [];
+  paramSections = [];
+  paramModules = [];
+  const commonModule = buildCommonModule(defs.modules || []);
+  const modules = commonModule ? [commonModule, ...(defs.modules || [])] : defs.modules || [];
+  modules.forEach((module) => {
+    const moduleDetails = document.createElement("details");
+    moduleDetails.className = "param-module";
+    moduleDetails.open = module.id === "common";
+    const moduleSummary = document.createElement("summary");
+    moduleSummary.textContent = module.label || module.id;
+    moduleDetails.appendChild(moduleSummary);
+
+    const moduleBody = document.createElement("div");
+    moduleBody.className = "param-module-body";
+    (module.sections || []).forEach((section) => {
+      const sectionDetails = document.createElement("details");
+      sectionDetails.className = "param-section";
+      sectionDetails.open = module.id === "common";
+      const sectionSummary = document.createElement("summary");
+      const count = Array.isArray(section.params) ? section.params.length : 0;
+      sectionSummary.textContent = `${section.label || section.id} (${count})`;
+      sectionDetails.appendChild(sectionSummary);
+
+      const list = document.createElement("div");
+      list.className = "param-list";
+      const rows = [];
+      (section.params || []).forEach((param) => {
+        const row = buildParamRow(module.id, section.id, param);
+        list.appendChild(row);
+        rows.push(row);
+        paramRows.push(row);
+      });
+      sectionDetails.appendChild(list);
+      moduleBody.appendChild(sectionDetails);
+      paramSections.push({ el: sectionDetails, module: module.id, kind: section.id, rows });
+    });
+    moduleDetails.appendChild(moduleBody);
+    paramBrowser.appendChild(moduleDetails);
+    paramModules.push({ el: moduleDetails, module: module.id });
+  });
+  applyParamFilters();
+}
+
+function buildCommonModule(modules) {
+  const favorites = currentFavorites.length ? currentFavorites : defaultParamFavorites;
+  if (!Array.isArray(modules) || favorites.length === 0) {
+    return null;
+  }
+  const index = new Map();
+  modules.forEach((module) => {
+    (module.sections || []).forEach((section) => {
+      (section.params || []).forEach((param) => {
+        const key = `${module.id}|${section.id}|${param.name}`;
+        index.set(key, param);
+      });
+    });
+  });
+
+  const sectionMap = new Map();
+  favorites.forEach((fav) => {
+    const key = `${fav.module}|${fav.section}|${fav.name}`;
+    const param = index.get(key);
+    if (!param) return;
+    const listKey = `${fav.section}`;
+    if (!sectionMap.has(listKey)) {
+      sectionMap.set(listKey, []);
+    }
+    sectionMap.get(listKey).push({ ...param, module: fav.module, section: fav.section });
+  });
+
+  if (sectionMap.size === 0) {
+    return null;
+  }
+
+  const order = ["command", "config", "status", "images"];
+  const sections = [];
+  order.forEach((id) => {
+    const params = sectionMap.get(id);
+    if (!params || params.length === 0) return;
+    sections.push({
+      id,
+      label: id.charAt(0).toUpperCase() + id.slice(1),
+      params,
+    });
+  });
+
+  return {
+    id: "common",
+    label: "Common",
+    sections,
+  };
+}
+
+function applyParamFilters() {
+  if (!paramBrowser) return;
+  const query = paramSearchInput?.value.trim().toLowerCase() || "";
+  const showConfig = paramFilterConfig?.checked ?? true;
+  const showStatus = paramFilterStatus?.checked ?? true;
+  const showCommand = paramFilterCommand?.checked ?? true;
+  const showImages = paramFilterImages?.checked ?? true;
+  const showFavoritesOnly = paramFavoritesOnly?.checked ?? false;
+  const kindVisible = {
+    config: showConfig,
+    status: showStatus,
+    command: showCommand,
+    images: showImages,
+  };
+
+  paramSections.forEach((section) => {
+    const showKind = kindVisible[section.kind] ?? true;
+    let visibleCount = 0;
+    section.rows.forEach((row) => {
+      const name = row.dataset.paramName || "";
+      const module = (row.dataset.paramModule || "").toLowerCase();
+      const kind = (row.dataset.paramKind || "").toLowerCase();
+      const key = `${module}|${kind}|${row.dataset.paramName || ""}`;
+      const matches = !query || name.includes(query) || module.includes(query);
+      const isFavorite = currentFavoriteSet.has(key);
+      const visible = showKind && matches && (!showFavoritesOnly || isFavorite);
+      row.classList.toggle("is-hidden", !visible);
+      if (visible) visibleCount += 1;
+    });
+    const sectionVisible = showKind && visibleCount > 0;
+    section.el.classList.toggle("is-hidden", !sectionVisible);
+    if (query && sectionVisible) {
+      section.el.open = true;
+    }
+  });
+
+  paramModules.forEach((module) => {
+    const visible = paramSections.some((section) => section.module === module.module && !section.el.classList.contains("is-hidden"));
+    module.el.classList.toggle("is-hidden", !visible);
+    if (query && visible) {
+      module.el.open = true;
+    }
+  });
+}
+
+async function loadParamDefinitions() {
+  if (!paramBrowser) return;
+  paramBrowser.innerHTML = "<div class=\"panel-hint\">Loading parameters…</div>";
+  try {
+    const res = await fetch("/params.json");
+    if (!res.ok) {
+      throw new Error("failed");
+    }
+    const data = await res.json();
+    paramDefs = data;
+    const stored = localStorage.getItem("paramFavorites");
+    if (stored) {
+      try {
+        currentFavorites = JSON.parse(stored) || [];
+      } catch (_) {
+        currentFavorites = [];
+      }
+    }
+    currentFavoriteSet = buildFavoriteSet(currentFavorites.length ? currentFavorites : defaultParamFavorites);
+    renderParamBrowser(data);
+  } catch (_) {
+    paramBrowser.innerHTML = "<div class=\"panel-hint\">Failed to load parameters.</div>";
+  }
+}
+
+paramSearchInput?.addEventListener("input", applyParamFilters);
+paramFilterConfig?.addEventListener("change", applyParamFilters);
+paramFilterStatus?.addEventListener("change", applyParamFilters);
+paramFilterCommand?.addEventListener("change", applyParamFilters);
+paramFilterImages?.addEventListener("change", applyParamFilters);
+paramFavoritesOnly?.addEventListener("change", applyParamFilters);
+paramExpandBtn?.addEventListener("click", () => {
+  paramModules.forEach((module) => {
+    module.el.open = true;
+  });
+  paramSections.forEach((section) => {
+    section.el.open = true;
+  });
+});
+paramCollapseBtn?.addEventListener("click", () => {
+  paramModules.forEach((module) => {
+    module.el.open = false;
+  });
+  paramSections.forEach((section) => {
+    section.el.open = false;
+  });
+});
+
+paramFavoritesEditBtn?.addEventListener("click", () => {
+  if (!paramFavoritesEditor || !paramFavoritesText) return;
+  paramFavoritesEditor.classList.toggle("is-hidden");
+  if (!paramFavoritesEditor.classList.contains("is-hidden")) {
+    paramFavoritesText.value = formatFavorites(currentFavorites.length ? currentFavorites : defaultParamFavorites);
+  }
+});
+
+paramFavoritesCancel?.addEventListener("click", () => {
+  paramFavoritesEditor?.classList.add("is-hidden");
+});
+
+paramFavoritesSave?.addEventListener("click", () => {
+  if (!paramFavoritesText) return;
+  const parsed = parseFavoritesInput(paramFavoritesText.value);
+  currentFavorites = parsed;
+  currentFavoriteSet = buildFavoriteSet(currentFavorites);
+  localStorage.setItem("paramFavorites", JSON.stringify(currentFavorites));
+  if (paramDefs) {
+    renderParamBrowser(paramDefs);
+  } else {
+    applyParamFilters();
+  }
+  paramFavoritesEditor?.classList.add("is-hidden");
+});
 let histogramThreshold = "";
 let histogramDirty = false;
 let histogramDrag = null;
@@ -103,6 +731,7 @@ attachHistogramInteractions();
 updateFooterPadding();
 scheduleLayoutRefresh();
 setupLayoutObserver();
+loadParamDefinitions();
 
 exportSnapshotBtn?.addEventListener("click", () => {
   exportSnapshot();
@@ -444,22 +1073,37 @@ function applySnapshot(threshold, payload) {
   scheduleProjectionUpdate(plot);
 }
 
-const ws = new WebSocket(`ws://${location.host}/ws`);
-ws.addEventListener("open", () => {
-  statusEl.textContent = "Connected";
-  if (ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: "snapshot_request" }));
-  }
-});
-ws.addEventListener("close", () => {
-  statusEl.textContent = "Disconnected";
-  setStatus(detectorStatusEl, "na");
-  setStatus(streamStatusEl, "na");
-  setStatus(filewriterStatusEl, "na");
-  setStatus(monitorStatusEl, "na");
-});
-ws.addEventListener("message", (event) => {
-  const msg = JSON.parse(event.data);
+let ws = null;
+let wsReconnectTimer = null;
+
+function connectWebSocket() {
+  const scheme = location.protocol === "https:" ? "wss" : "ws";
+  const url = `${scheme}://${location.host}/ws`;
+  ws = new WebSocket(url);
+  ws.addEventListener("open", () => {
+    statusEl.textContent = "Connected";
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "snapshot_request" }));
+    }
+  });
+  ws.addEventListener("close", () => {
+    statusEl.textContent = "Disconnected";
+    setStatus(detectorStatusEl, "na");
+    setStatus(streamStatusEl, "na");
+    setStatus(filewriterStatusEl, "na");
+    setStatus(monitorStatusEl, "na");
+    if (!wsReconnectTimer) {
+      wsReconnectTimer = window.setTimeout(() => {
+        wsReconnectTimer = null;
+        connectWebSocket();
+      }, 2000);
+    }
+  });
+  ws.addEventListener("error", () => {
+    statusEl.textContent = "WebSocket error";
+  });
+  ws.addEventListener("message", (event) => {
+    const msg = JSON.parse(event.data);
   if (msg.type === "config") {
     gridX = msg.grid_x;
     gridY = msg.grid_y;
@@ -519,7 +1163,10 @@ ws.addEventListener("message", (event) => {
     frameCount = 0;
     lastFrameTime = now;
   }
-});
+  });
+}
+
+connectWebSocket();
 
 function updatePlotScale(plot) {
   const wrapWidth = plot.canvasWrap.clientWidth;
@@ -767,18 +1414,11 @@ function closePanelIfMobile() {
   }
 }
 
-controlPanel?.addEventListener("change", () => {
-  setTimeout(closePanelIfMobile, 0);
-});
-
 controlPanel?.addEventListener("click", (event) => {
   const target = event.target;
   if (!target) return;
   if (target.closest("[data-panel-tab]")) {
     return;
-  }
-  if (target.closest("button")) {
-    setTimeout(closePanelIfMobile, 0);
   }
 });
 
