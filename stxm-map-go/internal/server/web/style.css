@@ -258,6 +258,12 @@ body.panel-opened .panel-handle {
   font-family: "Barlow", "Helvetica Neue", Arial, sans-serif;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  line-height: 1.1;
+  white-space: nowrap;
 }
 
 .panel-tab-btn.is-active {
@@ -265,6 +271,32 @@ body.panel-opened .panel-handle {
   border-color: rgba(0, 90, 167, 0.4);
   color: var(--accent);
   font-weight: 600;
+}
+
+.tab-icon {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+}
+
+.tab-icon svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+}
+
+.tab-label--short {
+  display: none;
+}
+
+@media (max-width: 1100px) {
+  .tab-label--long {
+    display: none;
+  }
+
+  .tab-label--short {
+    display: inline;
+  }
 }
 
 .panel-tab.is-hidden {

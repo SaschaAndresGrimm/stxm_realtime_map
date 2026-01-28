@@ -67,7 +67,7 @@ func main() {
 		workers         = flag.Int("workers", 4, "Number of processing workers")
 		gridX           = flag.Int("grid-x", 52, "Grid width in pixels")
 		gridY           = flag.Int("grid-y", 52, "Grid height in pixels")
-		debug           = flag.Bool("debug", true, "Run with simulated data")
+		debug           = flag.Bool("debug", false, "Run with simulated data")
 		debugAcqRate    = flag.Float64("debug-acq-rate", 100.0, "Simulated acquisition rate (frames/sec)")
 		uiRate          = flag.Duration("ui-rate", 1*time.Second, "UI update interval for websocket clients")
 		outputDir       = flag.String("output-dir", "output", "Directory for output data files")
@@ -80,6 +80,9 @@ func main() {
 
 	resolvedEndpoint := *endpoint
 	simplonBaseURL := ""
+	detectorIPValue := *detectorIP
+	zmqPortValue := *zmqPort
+	apiPortValue := *apiPort
 	if *detectorIP != "" {
 		resolvedEndpoint = fmt.Sprintf("tcp://%s:%d", *detectorIP, *zmqPort)
 		simplonBaseURL = fmt.Sprintf("http://%s:%d", *detectorIP, *apiPort)
@@ -108,10 +111,28 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	gridXVal := cfg.GridX
+	gridYVal := cfg.GridY
+	var gridMu sync.RWMutex
+	getGrid := func() (int, int) {
+		gridMu.RLock()
+		defer gridMu.RUnlock()
+		return gridXVal, gridYVal
+	}
+	setGrid := func(x, y int) {
+		gridMu.Lock()
+		gridXVal = x
+		gridYVal = y
+		gridMu.Unlock()
+	}
+
 	var rawMessages <-chan types.RawMessage
+	endpointUpdates := make(chan string, 1)
 	if cfg.Debug {
 		rawMessages = simulator.Stream(ctx, cfg.GridX, cfg.GridY, cfg.DebugAcqRate)
 	} else {
+		out := make(chan types.RawMessage, 128)
+		rawMessages = out
 		var recorder ingest.RawRecorder
 		if cfg.RawLogEnabled {
 			writer, err := output.NewRawLogWriter(cfg.RawLogDir, "raw_cbor")
@@ -126,17 +147,57 @@ func main() {
 				}
 			}()
 		}
-		ingestFrames, err := ingest.StreamWithLogEveryAndRecorder(ctx, cfg.Endpoint, cfg.IngestLogEvery, recorder)
-		if err != nil {
-			if cfg.IngestFallback {
-				log.Printf("failed to start ingest: %v; falling back to simulator", err)
-				rawMessages = simulator.Stream(ctx, cfg.GridX, cfg.GridY, cfg.DebugAcqRate)
-			} else {
-				log.Fatalf("failed to start ingest: %v", err)
+		go func() {
+			defer close(out)
+			currentEndpoint := resolvedEndpoint
+			var ingestCancel context.CancelFunc
+			var ingestCh <-chan types.RawMessage
+			startIngest := func(endpoint string) {
+				if ingestCancel != nil {
+					ingestCancel()
+				}
+				ingestCtx, cancel := context.WithCancel(ctx)
+				ingestCancel = cancel
+				frames, err := ingest.StreamWithLogEveryAndRecorder(ingestCtx, endpoint, cfg.IngestLogEvery, recorder)
+				if err != nil {
+					if cfg.IngestFallback {
+						log.Printf("failed to start ingest: %v; falling back to simulator", err)
+						x, y := getGrid()
+						ingestCh = simulator.Stream(ingestCtx, x, y, cfg.DebugAcqRate)
+					} else {
+						log.Fatalf("failed to start ingest: %v", err)
+					}
+				} else {
+					ingestCh = frames
+				}
 			}
-		} else {
-			rawMessages = ingestFrames
-		}
+			startIngest(currentEndpoint)
+			for {
+				select {
+				case <-ctx.Done():
+					if ingestCancel != nil {
+						ingestCancel()
+					}
+					return
+				case endpoint := <-endpointUpdates:
+					if endpoint == "" {
+						continue
+					}
+					currentEndpoint = endpoint
+					startIngest(currentEndpoint)
+				case msg, ok := <-ingestCh:
+					if !ok {
+						startIngest(currentEndpoint)
+						continue
+					}
+					select {
+					case <-ctx.Done():
+						return
+					case out <- msg:
+					}
+				}
+			}
+		}()
 	}
 
 	log.Printf("Starting web UI at http://localhost:%d\n", cfg.Port)
@@ -144,7 +205,7 @@ func main() {
 	processed := make(chan types.Frame, 128)
 	incoming := make(chan types.RawFrame, 128)
 	uiMessages := make(chan any, 16)
-	agg := processing.NewAggregator(cfg.GridX, cfg.GridY)
+	agg := processing.NewAggregator(gridXVal, gridYVal)
 	runTimestamp := ""
 	var runMu sync.Mutex
 	var statusMu sync.Mutex
@@ -170,6 +231,11 @@ func main() {
 		"last_write":  "",
 		"last_ingest": "",
 	}
+	type gridUpdate struct {
+		x int
+		y int
+	}
+	gridUpdates := make(chan gridUpdate, 1)
 
 	if cfg.Workers < 1 {
 		cfg.Workers = 1
@@ -185,8 +251,20 @@ func main() {
 		statusMu.Unlock()
 	}
 
-	if !cfg.Debug && simplonBaseURL != "" {
-		go simplon.Poll(ctx, simplonBaseURL, cfg.SimplonAPIVersion, cfg.SimplonPollInterval, func(update simplon.Status) {
+	var simplonMu sync.Mutex
+	var simplonCancel context.CancelFunc
+	startSimplonPoll := func(baseURL string) {
+		if cfg.Debug || baseURL == "" {
+			return
+		}
+		simplonMu.Lock()
+		defer simplonMu.Unlock()
+		if simplonCancel != nil {
+			simplonCancel()
+		}
+		pollCtx, cancel := context.WithCancel(ctx)
+		simplonCancel = cancel
+		go simplon.Poll(pollCtx, baseURL, cfg.SimplonAPIVersion, cfg.SimplonPollInterval, func(update simplon.Status) {
 			statusMu.Lock()
 			status["detector"] = update.Detector
 			status["stream"] = update.Stream
@@ -195,6 +273,7 @@ func main() {
 			statusMu.Unlock()
 		})
 	}
+	startSimplonPoll(simplonBaseURL)
 
 	go func() {
 		defer close(incoming)
@@ -224,11 +303,12 @@ func main() {
 						thresholdsMu.Lock()
 						currentThresholds = channels
 						thresholdsMu.Unlock()
+						x, y := getGrid()
 						select {
 						case uiMessages <- map[string]any{
 							"type":       "config",
-							"grid_x":     cfg.GridX,
-							"grid_y":     cfg.GridY,
+							"grid_x":     x,
+							"grid_y":     y,
 							"thresholds": channels,
 						}:
 						default:
@@ -320,6 +400,32 @@ func main() {
 		defer ticker.Stop()
 		for {
 			select {
+			case update := <-gridUpdates:
+				if update.x < 1 || update.y < 1 {
+					continue
+				}
+				setGrid(update.x, update.y)
+				agg = processing.NewAggregator(update.x, update.y)
+				latestSnapshotMu.Lock()
+				hasSnapshot = false
+				latestSnapshot = types.UISnapshot{}
+				latestSnapshotMu.Unlock()
+				runMuStatus.Lock()
+				framesExpected = 0
+				framesReceived = 0
+				runMuStatus.Unlock()
+				thresholdsMu.Lock()
+				thresholds := append([]string(nil), currentThresholds...)
+				thresholdsMu.Unlock()
+				select {
+				case uiMessages <- map[string]any{
+					"type":       "config",
+					"grid_x":     update.x,
+					"grid_y":     update.y,
+					"thresholds": thresholds,
+				}:
+				default:
+				}
 			case <-ctx.Done():
 				return
 			case frame, ok := <-processed:
@@ -339,7 +445,8 @@ func main() {
 					status["filewriter"] = "writing"
 					statusMu.Unlock()
 					writeStart := time.Now()
-					err := output.WriteSeries(cfg.OutputDir, ts, cfg.GridX, cfg.GridY, agg.Snapshot())
+					x, y := getGrid()
+					err := output.WriteSeries(cfg.OutputDir, ts, x, y, agg.Snapshot())
 					metrics.writeCount.Add(1)
 					metrics.writeNanos.Add(uint64(time.Since(writeStart).Nanoseconds()))
 					if err != nil {
@@ -444,15 +551,50 @@ func main() {
 	configFn := func() map[string]any {
 		thresholdsMu.Lock()
 		defer thresholdsMu.Unlock()
+		x, y := getGrid()
+		simplonMu.Lock()
+		currentBaseURL := simplonBaseURL
+		simplonMu.Unlock()
 		return map[string]any{
-			"type":       "config",
-			"grid_x":     cfg.GridX,
-			"grid_y":     cfg.GridY,
-			"thresholds": append([]string(nil), currentThresholds...),
+			"type":             "config",
+			"grid_x":           x,
+			"grid_y":           y,
+			"thresholds":       append([]string(nil), currentThresholds...),
+			"detector_ip":      detectorIPValue,
+			"zmq_port":         zmqPortValue,
+			"api_port":         apiPortValue,
+			"endpoint":         resolvedEndpoint,
+			"simplon_base_url": currentBaseURL,
 		}
 	}
 
-	if err := server.Run(ctx, cfg, uiMessages, statusFn, snapshotFn, configFn); err != nil {
+	gridFn := func(x, y int) error {
+		select {
+		case gridUpdates <- gridUpdate{x: x, y: y}:
+			return nil
+		default:
+			return fmt.Errorf("grid update already pending")
+		}
+	}
+
+	endpointFn := func(ip string, zmqPort int, apiPort int) error {
+		if ip == "" || zmqPort < 1 || apiPort < 1 {
+			return fmt.Errorf("invalid endpoint configuration")
+		}
+		detectorIPValue = ip
+		zmqPortValue = zmqPort
+		apiPortValue = apiPort
+		resolvedEndpoint = fmt.Sprintf("tcp://%s:%d", ip, zmqPort)
+		simplonBaseURL = fmt.Sprintf("http://%s:%d", ip, apiPort)
+		startSimplonPoll(simplonBaseURL)
+		select {
+		case endpointUpdates <- resolvedEndpoint:
+		default:
+		}
+		return nil
+	}
+
+	if err := server.Run(ctx, cfg, uiMessages, statusFn, snapshotFn, configFn, gridFn, endpointFn); err != nil {
 		log.Printf("server stopped: %v", err)
 	}
 }

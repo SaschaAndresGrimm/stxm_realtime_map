@@ -23,11 +23,29 @@
         <div class="panel-header">
           <h2>Controls</h2>
         </div>
-        <div class="panel-tabs" role="tablist" aria-label="Control tabs">
-          <button class="panel-tab-btn is-active" data-panel-tab="ui" role="tab" aria-selected="true">UI Settings</button>
-          <button class="panel-tab-btn" data-panel-tab="detector" role="tab" aria-selected="false">Detector</button>
-          <button class="panel-tab-btn" data-panel-tab="params" role="tab" aria-selected="false">Parameters</button>
-        </div>
+      <div class="panel-tabs" role="tablist" aria-label="Control tabs">
+        <button class="panel-tab-btn is-active" data-panel-tab="ui" role="tab" aria-selected="true" aria-label="UI Settings">
+          <span class="tab-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path d="M4 5h16M4 12h10M4 19h16" stroke-width="1.6" stroke-linecap="round"/>
+              <circle cx="17" cy="12" r="2.3" stroke-width="1.6"/>
+            </svg>
+          </span>
+          <span class="tab-label tab-label--long">UI Settings</span>
+          <span class="tab-label tab-label--short">UI</span>
+        </button>
+        <button class="panel-tab-btn" data-panel-tab="detector" role="tab" aria-selected="false" aria-label="Detector">
+          <span class="tab-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <rect x="4" y="6" width="16" height="12" rx="2" stroke-width="1.6"/>
+              <circle cx="9" cy="12" r="2.2" stroke-width="1.6"/>
+              <path d="M14 12h4" stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+          </span>
+          <span class="tab-label tab-label--long">Detector</span>
+          <span class="tab-label tab-label--short">Det</span>
+        </button>
+      </div>
       </div>
       <div class="panel-tab" data-panel-page="ui">
         <div class="panel-section">
@@ -77,6 +95,23 @@
           </label>
         </div>
         <div class="panel-section">
+          <div class="panel-hint">Scan grid (points to plot).</div>
+          <div class="detector-form">
+            <label>
+              <span>Grid X</span>
+              <input id="grid-x" type="number" step="1" min="1" placeholder="52" />
+            </label>
+            <label>
+              <span>Grid Y</span>
+              <input id="grid-y" type="number" step="1" min="1" placeholder="52" />
+            </label>
+          </div>
+          <div class="detector-actions">
+            <button id="grid-apply" class="export-btn export-wide">Apply grid</button>
+          </div>
+          <div id="grid-status" class="panel-hint">Grid unchanged.</div>
+        </div>
+        <div class="panel-section">
           <div class="zoom-controls">
             <button id="zoom-out" class="export-btn">-</button>
             <span id="zoom-level">1.0x</span>
@@ -90,6 +125,27 @@
         </div>
       </div>
       <div class="panel-tab is-hidden" data-panel-page="detector">
+        <div class="panel-section">
+          <div class="panel-hint">Detector connection.</div>
+          <div class="detector-form">
+            <label>
+              <span>Detector IP</span>
+              <input id="detector-ip" type="text" placeholder="192.168.20.88" />
+            </label>
+            <label>
+              <span>ZMQ port</span>
+              <input id="detector-zmq-port" type="number" step="1" min="1" placeholder="31001" />
+            </label>
+            <label>
+              <span>API port</span>
+              <input id="detector-api-port" type="number" step="1" min="1" placeholder="80" />
+            </label>
+          </div>
+          <div class="detector-actions">
+            <button id="endpoint-apply" class="export-btn export-wide">Apply connection</button>
+          </div>
+          <div id="endpoint-status" class="panel-hint">Connection unchanged.</div>
+        </div>
         <div class="panel-section">
           <div class="panel-hint">
             Detector commands are sent via the SIMPLON API.
@@ -131,9 +187,8 @@
           </div>
           <div id="detector-config-status" class="panel-hint">No settings applied yet.</div>
         </div>
-      </div>
-      <div class="panel-tab is-hidden" data-panel-page="params">
         <div class="panel-section param-toolbar">
+          <div class="panel-hint">Full SIMPLON parameter set.</div>
           <input id="param-search" class="param-search" type="search" placeholder="Search parameters (e.g., count_time, threshold/n/energy)" />
           <div class="param-filter-row">
             <label class="toggle">

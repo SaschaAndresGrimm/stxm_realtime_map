@@ -23,6 +23,15 @@ const detectorFrameTime = document.getElementById("detector-frame-time");
 const detectorTriggerMode = document.getElementById("detector-trigger-mode");
 const detectorNTrigger = document.getElementById("detector-ntrigger");
 const detectorNImages = document.getElementById("detector-nimages");
+const gridXInput = document.getElementById("grid-x");
+const gridYInput = document.getElementById("grid-y");
+const gridApplyBtn = document.getElementById("grid-apply");
+const gridStatus = document.getElementById("grid-status");
+const detectorIpInput = document.getElementById("detector-ip");
+const detectorZmqPortInput = document.getElementById("detector-zmq-port");
+const detectorApiPortInput = document.getElementById("detector-api-port");
+const endpointApplyBtn = document.getElementById("endpoint-apply");
+const endpointStatus = document.getElementById("endpoint-status");
 const paramSearchInput = document.getElementById("param-search");
 const paramBrowser = document.getElementById("param-browser");
 const paramFilterConfig = document.getElementById("param-filter-config");
@@ -98,6 +107,9 @@ let detectorPollId = null;
 let detectorPollInFlight = false;
 
 function activatePanelTab(name) {
+  if (![...panelTabButtons].some((btn) => btn.dataset.panelTab === name)) {
+    name = "ui";
+  }
   panelTabButtons.forEach((btn) => {
     const active = btn.dataset.panelTab === name;
     btn.classList.toggle("is-active", active);
@@ -192,6 +204,65 @@ detectorApplyBtn?.addEventListener("click", async () => {
     }
   }
   detectorConfigStatus.textContent = "Settings applied.";
+});
+
+gridApplyBtn?.addEventListener("click", async () => {
+  const x = gridXInput?.value ? parseInt(gridXInput.value, 10) : NaN;
+  const y = gridYInput?.value ? parseInt(gridYInput.value, 10) : NaN;
+  if (!Number.isFinite(x) || !Number.isFinite(y) || x < 1 || y < 1) {
+    if (gridStatus) gridStatus.textContent = "Invalid grid size.";
+    return;
+  }
+  if (gridStatus) gridStatus.textContent = "Updating grid...";
+  try {
+    const res = await fetch("/ui/grid", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ grid_x: x, grid_y: y }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (data.ok) {
+      if (gridStatus) gridStatus.textContent = "Grid updated.";
+    } else {
+      if (gridStatus) gridStatus.textContent = `Grid update failed (${data.status || res.status}).`;
+    }
+  } catch (_) {
+    if (gridStatus) gridStatus.textContent = "Grid update failed.";
+  }
+});
+
+endpointApplyBtn?.addEventListener("click", async () => {
+  const ip = detectorIpInput?.value?.trim();
+  const zmqPort = detectorZmqPortInput?.value ? parseInt(detectorZmqPortInput.value, 10) : NaN;
+  const apiPort = detectorApiPortInput?.value ? parseInt(detectorApiPortInput.value, 10) : NaN;
+  if (!ip) {
+    if (endpointStatus) endpointStatus.textContent = "Detector IP required.";
+    return;
+  }
+  if (!Number.isFinite(zmqPort) || !Number.isFinite(apiPort)) {
+    if (endpointStatus) endpointStatus.textContent = "Invalid ports.";
+    return;
+  }
+  if (endpointStatus) endpointStatus.textContent = "Updating connection...";
+  try {
+    const res = await fetch("/ui/endpoint", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        detector_ip: ip,
+        zmq_port: zmqPort,
+        api_port: apiPort,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (data.ok) {
+      if (endpointStatus) endpointStatus.textContent = "Connection updated.";
+    } else {
+      if (endpointStatus) endpointStatus.textContent = `Connection update failed (${data.status || res.status}).`;
+    }
+  } catch (_) {
+    if (endpointStatus) endpointStatus.textContent = "Connection update failed.";
+  }
 });
 
 async function loadDetectorConfig({ silent } = {}) {
@@ -353,6 +424,31 @@ function setParamStatus(el, text, state) {
   el.classList.remove("param-result-ok", "param-result-error");
   if (state) {
     el.classList.add(state === "ok" ? "param-result-ok" : "param-result-error");
+  }
+}
+
+async function loadServerConfig() {
+  try {
+    const res = await fetch("/config");
+    if (!res.ok) return;
+    const data = await res.json();
+    if (gridXInput && document.activeElement !== gridXInput && data.grid_x != null) {
+      gridXInput.value = `${data.grid_x}`;
+    }
+    if (gridYInput && document.activeElement !== gridYInput && data.grid_y != null) {
+      gridYInput.value = `${data.grid_y}`;
+    }
+    if (detectorIpInput && document.activeElement !== detectorIpInput && data.detector_ip) {
+      detectorIpInput.value = data.detector_ip;
+    }
+    if (detectorZmqPortInput && document.activeElement !== detectorZmqPortInput && data.zmq_port) {
+      detectorZmqPortInput.value = `${data.zmq_port}`;
+    }
+    if (detectorApiPortInput && document.activeElement !== detectorApiPortInput && data.api_port) {
+      detectorApiPortInput.value = `${data.api_port}`;
+    }
+  } catch (_) {
+    // ignore
   }
 }
 
@@ -732,6 +828,7 @@ updateFooterPadding();
 scheduleLayoutRefresh();
 setupLayoutObserver();
 loadParamDefinitions();
+loadServerConfig();
 
 exportSnapshotBtn?.addEventListener("click", () => {
   exportSnapshot();
@@ -1107,6 +1204,12 @@ function connectWebSocket() {
   if (msg.type === "config") {
     gridX = msg.grid_x;
     gridY = msg.grid_y;
+    if (gridXInput && document.activeElement !== gridXInput) {
+      gridXInput.value = `${gridX}`;
+    }
+    if (gridYInput && document.activeElement !== gridYInput) {
+      gridYInput.value = `${gridY}`;
+    }
     plotsEl.innerHTML = "";
     (msg.thresholds || []).forEach(createPlot);
     histogramThreshold = (msg.thresholds || [])[0] || "";

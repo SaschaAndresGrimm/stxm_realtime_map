@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/fs"
 	"net/http"
@@ -28,6 +29,8 @@ type Server struct {
 	statusFn   func() map[string]any
 	snapshotFn func() any
 	configFn   func() map[string]any
+	gridFn     func(int, int) error
+	endpointFn func(string, int, int) error
 }
 
 const (
@@ -36,7 +39,7 @@ const (
 	pingEvery = (pongWait * 9) / 10
 )
 
-func Run(ctx context.Context, cfg config.AppConfig, messages <-chan any, statusFn func() map[string]any, snapshotFn func() any, configFn func() map[string]any) error {
+func Run(ctx context.Context, cfg config.AppConfig, messages <-chan any, statusFn func() map[string]any, snapshotFn func() any, configFn func() map[string]any, gridFn func(int, int) error, endpointFn func(string, int, int) error) error {
 	srv := &Server{
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool { return true },
@@ -46,6 +49,8 @@ func Run(ctx context.Context, cfg config.AppConfig, messages <-chan any, statusF
 		statusFn:   statusFn,
 		snapshotFn: snapshotFn,
 		configFn:   configFn,
+		gridFn:     gridFn,
+		endpointFn: endpointFn,
 	}
 
 	sub, err := fs.Sub(webFS, "web")
@@ -61,6 +66,8 @@ func Run(ctx context.Context, cfg config.AppConfig, messages <-chan any, statusF
 	mux.HandleFunc("/detector/command/", srv.handleDetectorCommand)
 	mux.HandleFunc("/detector/config/", srv.handleDetectorConfig)
 	mux.HandleFunc("/simplon/", srv.handleSimplon)
+	mux.HandleFunc("/ui/grid", srv.handleGrid)
+	mux.HandleFunc("/ui/endpoint", srv.handleEndpoint)
 
 	httpServer := &http.Server{
 		Addr:              ":" + itoa(cfg.Port),
@@ -166,6 +173,13 @@ func (s *Server) handleConfig(w http.ResponseWriter, _ *http.Request) {
 		"grid_y":     s.cfg.GridY,
 		"thresholds": s.cfg.PlotThreshold,
 		"port":       s.cfg.Port,
+	}
+	if s.configFn != nil {
+		if cfg := s.configFn(); cfg != nil {
+			for key, value := range cfg {
+				payload[key] = value
+			}
+		}
 	}
 	_ = json.NewEncoder(w).Encode(payload)
 }
@@ -276,6 +290,140 @@ func (s *Server) handleDetectorConfig(w http.ResponseWriter, r *http.Request) {
 		"status": code,
 		"param":  param,
 		"body":   body,
+	})
+}
+
+func (s *Server) handleGrid(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var payload map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": "invalid json body",
+		})
+		return
+	}
+	gridX, okX := payload["grid_x"]
+	gridY, okY := payload["grid_y"]
+	if !okX || !okY {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": "missing grid_x or grid_y",
+		})
+		return
+	}
+	x, err := toInt(gridX)
+	if err != nil || x < 1 {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": "invalid grid_x",
+		})
+		return
+	}
+	y, err := toInt(gridY)
+	if err != nil || y < 1 {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": "invalid grid_y",
+		})
+		return
+	}
+	if s.gridFn == nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": "grid updates disabled",
+		})
+		return
+	}
+	if err := s.gridFn(x, y); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+		})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"ok":     true,
+		"status": http.StatusOK,
+		"grid_x": x,
+		"grid_y": y,
+	})
+}
+
+func (s *Server) handleEndpoint(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var payload map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": "invalid json body",
+		})
+		return
+	}
+	detectorIP, _ := payload["detector_ip"].(string)
+	if detectorIP == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": "missing detector_ip",
+		})
+		return
+	}
+	zmqPort, err := toInt(payload["zmq_port"])
+	if err != nil || zmqPort < 1 {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": "invalid zmq_port",
+		})
+		return
+	}
+	apiPort, err := toInt(payload["api_port"])
+	if err != nil || apiPort < 1 {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": "invalid api_port",
+		})
+		return
+	}
+	if s.endpointFn == nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": "endpoint updates disabled",
+		})
+		return
+	}
+	if err := s.endpointFn(detectorIP, zmqPort, apiPort); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+		})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"ok":          true,
+		"status":      http.StatusOK,
+		"detector_ip": detectorIP,
+		"zmq_port":    zmqPort,
+		"api_port":    apiPort,
 	})
 }
 
@@ -519,4 +667,25 @@ func itoa(v int) string {
 		buf[i], buf[j] = buf[j], buf[i]
 	}
 	return string(buf)
+}
+
+func toInt(v any) (int, error) {
+	switch n := v.(type) {
+	case int:
+		return n, nil
+	case int64:
+		return int(n), nil
+	case float64:
+		return int(n), nil
+	case float32:
+		return int(n), nil
+	case json.Number:
+		i64, err := n.Int64()
+		if err != nil {
+			return 0, err
+		}
+		return int(i64), nil
+	default:
+		return 0, fmt.Errorf("unsupported int type %T", v)
+	}
 }
